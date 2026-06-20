@@ -25,6 +25,9 @@ export default function AthleteCalendar() {
     (async () => {
       const attrs = await fetchUserAttributes();
       setEmail(attrs.email ?? null);
+      // The default access token has no email claim, which the Workout
+      // owner rule needs. The ID token does carry it, so we fetch it
+      // explicitly and pass it on every Workout request below.
       const session = await fetchAuthSession();
       setIdToken(session.tokens?.idToken?.toString() ?? null);
     })();
@@ -63,6 +66,8 @@ export default function AthleteCalendar() {
     type: w.type,
     intensity: w.intensity,
     completed: w.completed,
+    distanceKm: w.distanceKm,
+    durationMin: w.durationMin,
   }));
 
   return (

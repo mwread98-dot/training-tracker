@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { Fragment, useMemo } from "react";
 
 export type CalendarWorkout = {
   id: string;
@@ -7,6 +7,8 @@ export type CalendarWorkout = {
   type?: string | null;
   intensity?: string | null;
   completed?: boolean | null;
+  distanceKm?: number | null;
+  durationMin?: number | null;
 };
 
 type Props = {
@@ -19,7 +21,8 @@ type Props = {
   onWorkoutClick?: (workout: CalendarWorkout) => void;
 };
 
-const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+// Monday-first week.
+const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
@@ -34,6 +37,15 @@ function chipClass(w: CalendarWorkout) {
   if (w.type === "rest") return "workout-chip rest";
   if (w.intensity === "hard" || w.intensity === "race_pace") return "workout-chip hard";
   return "workout-chip";
+}
+
+function formatDuration(totalMin: number) {
+  if (totalMin <= 0) return null;
+  const h = Math.floor(totalMin / 60);
+  const m = Math.round(totalMin % 60);
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
 }
 
 export default function CalendarGrid({
@@ -56,7 +68,8 @@ export default function CalendarGrid({
 
   const cells = useMemo(() => {
     const firstOfMonth = new Date(year, month, 1);
-    const startOffset = firstOfMonth.getDay();
+    // getDay(): 0=Sun..6=Sat. Convert to a Monday-first offset: 0=Mon..6=Sun.
+    const startOffset = (firstOfMonth.getDay() + 6) % 7;
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const daysInPrevMonth = new Date(year, month, 0).getDate();
 
@@ -84,6 +97,22 @@ export default function CalendarGrid({
     return result;
   }, [year, month]);
 
+  const weekTotals = useMemo(() => {
+    const totals: { km: number; min: number }[] = [];
+    for (let i = 0; i < cells.length; i += 7) {
+      let km = 0;
+      let min = 0;
+      for (let j = i; j < i + 7; j++) {
+        for (const w of byDate[cells[j].iso] ?? []) {
+          km += w.distanceKm ?? 0;
+          min += w.durationMin ?? 0;
+        }
+      }
+      totals.push({ km, min });
+    }
+    return totals;
+  }, [cells, byDate]);
+
   const todayIso = toIso(
     new Date().getFullYear(),
     new Date().getMonth(),
@@ -101,30 +130,47 @@ export default function CalendarGrid({
         {DOW.map((d) => (
           <div className="calendar-dow" key={d}>{d}</div>
         ))}
-        {cells.map((cell) => (
-          <div
-            key={cell.iso}
-            className={`calendar-day ${cell.outside ? "outside" : ""} ${
-              cell.iso === todayIso ? "today" : ""
-            }`}
-            onClick={() => !cell.outside && onDayClick?.(cell.iso)}
-            style={{ cursor: onDayClick && !cell.outside ? "pointer" : "default" }}
-          >
-            {!cell.outside && <span className="daynum">{cell.day}</span>}
-            {(byDate[cell.iso] ?? []).map((w) => (
-              <button
-                key={w.id}
-                className={chipClass(w)}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onWorkoutClick?.(w);
-                }}
-                title={w.title}
+        <div className="calendar-dow total-col">Week</div>
+
+        {Array.from({ length: cells.length / 7 }).map((_, weekIdx) => (
+          <Fragment key={weekIdx}>
+            {cells.slice(weekIdx * 7, weekIdx * 7 + 7).map((cell) => (
+              <div
+                key={cell.iso}
+                className={`calendar-day ${cell.outside ? "outside" : ""} ${
+                  cell.iso === todayIso ? "today" : ""
+                }`}
+                onClick={() => !cell.outside && onDayClick?.(cell.iso)}
+                style={{ cursor: onDayClick && !cell.outside ? "pointer" : "default" }}
               >
-                {w.title}
-              </button>
+                {!cell.outside && <span className="daynum">{cell.day}</span>}
+                {(byDate[cell.iso] ?? []).map((w) => (
+                  <button
+                    key={w.id}
+                    className={chipClass(w)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onWorkoutClick?.(w);
+                    }}
+                    title={w.title}
+                  >
+                    {w.title}
+                  </button>
+                ))}
+              </div>
             ))}
-          </div>
+            <div className="week-total">
+              {weekTotals[weekIdx].km > 0 && (
+                <strong>{weekTotals[weekIdx].km.toFixed(1)} km</strong>
+              )}
+              {formatDuration(weekTotals[weekIdx].min) && (
+                <span>{formatDuration(weekTotals[weekIdx].min)}</span>
+              )}
+              {weekTotals[weekIdx].km === 0 && weekTotals[weekIdx].min === 0 && (
+                <span>—</span>
+              )}
+            </div>
+          </Fragment>
         ))}
       </div>
     </div>

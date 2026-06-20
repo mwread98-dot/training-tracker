@@ -94,6 +94,8 @@ export default function CoachDashboard() {
     type: w.type,
     intensity: w.intensity,
     completed: w.completed,
+    distanceKm: w.distanceKm,
+    durationMin: w.durationMin,
   }));
 
   return (
