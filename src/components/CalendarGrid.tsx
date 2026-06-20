@@ -113,17 +113,41 @@ export default function CalendarGrid({
     return totals;
   }, [cells, byDate]);
 
+  const monthTotal = useMemo(() => {
+    const prefix = `${year}-${String(month + 1).padStart(2, "0")}`;
+    let km = 0;
+    let min = 0;
+    for (const w of workouts) {
+      if (!w.date.startsWith(prefix)) continue;
+      km += w.distanceKm ?? 0;
+      min += w.durationMin ?? 0;
+    }
+    return { km, min };
+  }, [workouts, year, month]);
+
   const todayIso = toIso(
     new Date().getFullYear(),
     new Date().getMonth(),
     new Date().getDate()
   );
 
+  const monthDuration = formatDuration(monthTotal.min);
+
   return (
     <div>
       <div className="calendar-header">
         <button className="btn" onClick={onPrevMonth}>← Prev</button>
-        <h2>{MONTH_NAMES[month]} {year}</h2>
+        <div style={{ textAlign: "center" }}>
+          <h2>{MONTH_NAMES[month]} {year}</h2>
+          {(monthTotal.km > 0 || monthDuration) && (
+            <p className="month-total-line">
+              {monthTotal.km > 0 && `${monthTotal.km.toFixed(1)} km`}
+              {monthTotal.km > 0 && monthDuration && " · "}
+              {monthDuration && monthDuration}
+              {" planned this month"}
+            </p>
+          )}
+        </div>
         <button className="btn" onClick={onNextMonth}>Next →</button>
       </div>
       <div className="calendar-grid">
@@ -140,10 +164,10 @@ export default function CalendarGrid({
                 className={`calendar-day ${cell.outside ? "outside" : ""} ${
                   cell.iso === todayIso ? "today" : ""
                 }`}
-                onClick={() => !cell.outside && onDayClick?.(cell.iso)}
-                style={{ cursor: onDayClick && !cell.outside ? "pointer" : "default" }}
+                onClick={() => onDayClick?.(cell.iso)}
+                style={{ cursor: onDayClick ? "pointer" : "default" }}
               >
-                {!cell.outside && <span className="daynum">{cell.day}</span>}
+                <span className="daynum">{cell.day}</span>
                 {(byDate[cell.iso] ?? []).map((w) => (
                   <button
                     key={w.id}

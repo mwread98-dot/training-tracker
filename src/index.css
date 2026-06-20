@@ -164,14 +164,20 @@ input, select, textarea {
 
 .calendar-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   margin-bottom: 16px;
 }
 
+.month-total-line {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
 .calendar-grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(7, 1fr) 92px;
   gap: 8px;
 }
 
@@ -181,6 +187,31 @@ input, select, textarea {
   color: var(--text-muted);
   text-align: center;
   padding-bottom: 4px;
+}
+
+.calendar-dow.total-col {
+  color: var(--accent-dark);
+}
+
+.week-total {
+  min-height: 92px;
+  border-radius: 8px;
+  padding: 8px 6px;
+  background: #f1efe6;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.week-total strong {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-dark);
 }
 
 .calendar-day {
@@ -197,6 +228,10 @@ input, select, textarea {
 .calendar-day.outside {
   background: transparent;
   border-color: transparent;
+}
+
+.calendar-day.outside .daynum {
+  opacity: 0.45;
 }
 
 .calendar-day.today {
@@ -312,10 +347,19 @@ input, select, textarea {
 @media (max-width: 640px) {
   .calendar-grid {
     gap: 4px;
+    grid-template-columns: repeat(7, 1fr) 64px;
   }
   .calendar-day {
     min-height: 64px;
     padding: 4px;
+  }
+  .week-total {
+    min-height: 64px;
+    font-size: 9px;
+    padding: 4px 2px;
+  }
+  .week-total strong {
+    font-size: 11px;
   }
   .workout-chip {
     font-size: 10px;
