@@ -22,7 +22,7 @@ export default function CoachDashboard() {
   const [showAddAthlete, setShowAddAthlete] = useState(false);
   const [newName, setNewName] = useState("");
   const [newEmail, setNewEmail] = useState("");
-  const [formState, setFormState] = useState
+  const [formState, setFormState] = useState<
     { open: false } | { open: true; date: string; existing: Workout | null }
   >({ open: false });
 
