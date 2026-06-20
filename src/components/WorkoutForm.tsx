@@ -26,8 +26,8 @@ export default function WorkoutForm({
   onClose,
 }: Props) {
   const [date, setDate] = useState(existing?.date ?? defaultDate);
-  const [type, setType] = useState(existing?.type ?? "run");
-  const [intensity, setIntensity] = useState(existing?.intensity ?? "easy");
+  const [type, setType] = useState<string>(existing?.type ?? "run");
+  const [intensity, setIntensity] = useState<string>(existing?.intensity ?? "easy");
   const [title, setTitle] = useState(existing?.title ?? "");
   const [description, setDescription] = useState(existing?.description ?? "");
   const [distanceKm, setDistanceKm] = useState(
