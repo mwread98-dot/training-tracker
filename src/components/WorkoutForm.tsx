@@ -66,6 +66,27 @@ export default function WorkoutForm({
         <p style={{ color: "var(--text-muted)", fontSize: 14, marginBottom: 16 }}>
           For {athleteName}
         </p>
+
+        {existing && (existing.completed || existing.athleteNotes) && (
+          <div
+            style={{
+              background: "var(--accent-soft)",
+              borderRadius: 8,
+              padding: "10px 12px",
+              marginBottom: 16,
+              fontSize: 14,
+            }}
+          >
+            <strong style={{ color: "var(--accent-dark)" }}>
+              {existing.completed ? "✓ Marked completed by athlete" : "Not marked completed yet"}
+            </strong>
+            {existing.athleteNotes && (
+              <p style={{ marginTop: 6, marginBottom: 0, color: "var(--text)" }}>
+                "{existing.athleteNotes}"
+              </p>
+            )}
+          </div>
+        )}
         <form onSubmit={handleSubmit}>
           <div className="row">
             <div className="field">

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "../../amplify/data/resource";
 import CalendarGrid, { type CalendarWorkout } from "./CalendarGrid";
@@ -9,6 +9,10 @@ const client = generateClient<Schema>();
 type Profile = Schema["Profile"]["type"];
 type Workout = Schema["Workout"]["type"];
 
+// How often to silently re-check for changes made by athletes (e.g. marking
+// a session complete) while the coach has the dashboard open.
+const POLL_MS = 20000;
+
 export default function CoachDashboard() {
   const [athletes, setAthletes] = useState<Profile[]>([]);
   const [selected, setSelected] = useState<Profile | null>(null);
@@ -18,32 +22,36 @@ export default function CoachDashboard() {
   const [showAddAthlete, setShowAddAthlete] = useState(false);
   const [newName, setNewName] = useState("");
   const [newEmail, setNewEmail] = useState("");
-  const [formState, setFormState] = useState<
+  const [formState, setFormState] = useState
     { open: false } | { open: true; date: string; existing: Workout | null }
   >({ open: false });
 
-  useEffect(() => {
-    const sub = client.models.Profile.observeQuery().subscribe({
-      next: ({ items }) => {
-        setAthletes(items);
-        setSelected((prev) => prev ?? items[0] ?? null);
-      },
-    });
-    return () => sub.unsubscribe();
+  const loadAthletes = useCallback(async () => {
+    const { data } = await client.models.Profile.list();
+    setAthletes(data);
+    setSelected((prev) => prev ?? data[0] ?? null);
   }, []);
+
+  const loadWorkouts = useCallback(async (athleteEmail: string) => {
+    const { data } = await client.models.Workout.list({
+      filter: { athleteEmail: { eq: athleteEmail } },
+    });
+    setWorkouts(data);
+  }, []);
+
+  useEffect(() => {
+    loadAthletes();
+  }, [loadAthletes]);
 
   useEffect(() => {
     if (!selected) {
       setWorkouts([]);
       return;
     }
-    const sub = client.models.Workout.observeQuery({
-      filter: { athleteEmail: { eq: selected.email } },
-    }).subscribe({
-      next: ({ items }) => setWorkouts(items),
-    });
-    return () => sub.unsubscribe();
-  }, [selected]);
+    loadWorkouts(selected.email);
+    const interval = setInterval(() => loadWorkouts(selected.email), POLL_MS);
+    return () => clearInterval(interval);
+  }, [selected, loadWorkouts]);
 
   async function addAthlete(e: React.FormEvent) {
     e.preventDefault();
@@ -55,6 +63,7 @@ export default function CoachDashboard() {
     setNewName("");
     setNewEmail("");
     setShowAddAthlete(false);
+    loadAthletes();
   }
 
   async function saveWorkout(data: Partial<Workout> & { date: string; title: string }) {
@@ -67,6 +76,7 @@ export default function CoachDashboard() {
       await client.models.Workout.create(data as any);
     }
     setFormState({ open: false });
+    if (selected) loadWorkouts(selected.email);
   }
 
   async function deleteWorkout() {
@@ -74,6 +84,7 @@ export default function CoachDashboard() {
       await client.models.Workout.delete({ id: formState.existing.id });
     }
     setFormState({ open: false });
+    if (selected) loadWorkouts(selected.email);
   }
 
   const calendarWorkouts: CalendarWorkout[] = workouts.map((w) => ({

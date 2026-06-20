@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { generateClient } from "aws-amplify/data";
 import { fetchUserAttributes, fetchAuthSession } from "aws-amplify/auth";
 import type { Schema } from "../../amplify/data/resource";
@@ -8,6 +8,10 @@ import WorkoutDetail from "./WorkoutDetail";
 const client = generateClient<Schema>();
 
 type Workout = Schema["Workout"]["type"];
+
+// How often to silently re-check for newly-assigned sessions while the
+// athlete has the calendar open.
+const POLL_MS = 20000;
 
 export default function AthleteCalendar() {
   const [email, setEmail] = useState<string | null>(null);
@@ -21,25 +25,26 @@ export default function AthleteCalendar() {
     (async () => {
       const attrs = await fetchUserAttributes();
       setEmail(attrs.email ?? null);
-      // The default access token has no email claim, which the Workout
-      // owner rule needs. The ID token does carry it, so we fetch it
-      // explicitly and pass it on every Workout request below.
       const session = await fetchAuthSession();
       setIdToken(session.tokens?.idToken?.toString() ?? null);
     })();
   }, []);
 
-  useEffect(() => {
+  const loadWorkouts = useCallback(async () => {
     if (!email || !idToken) return;
-    const sub = client.models.Workout.observeQuery({
+    const { data } = await client.models.Workout.list({
       filter: { athleteEmail: { eq: email } },
       authMode: "userPool",
       authToken: idToken,
-    }).subscribe({
-      next: ({ items }) => setWorkouts(items),
     });
-    return () => sub.unsubscribe();
+    setWorkouts(data);
   }, [email, idToken]);
+
+  useEffect(() => {
+    loadWorkouts();
+    const interval = setInterval(loadWorkouts, POLL_MS);
+    return () => clearInterval(interval);
+  }, [loadWorkouts]);
 
   async function handleSave(data: { completed: boolean; athleteNotes?: string }) {
     if (!selected || !idToken) return;
@@ -48,6 +53,7 @@ export default function AthleteCalendar() {
       { authMode: "userPool", authToken: idToken }
     );
     setSelected(null);
+    loadWorkouts();
   }
 
   const calendarWorkouts: CalendarWorkout[] = workouts.map((w) => ({
