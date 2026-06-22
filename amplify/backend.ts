@@ -36,7 +36,7 @@ backend.stravaSync.addEnvironment(
   "STRAVA_TOKEN_TABLE",
   tokenTable.tableName
 );
-backend.stravaSync.resources.lambda.addEnvironment(
+backend.stravaSync.addEnvironment(
   "WORKOUT_TABLE",
   workoutTable.tableName
 );
