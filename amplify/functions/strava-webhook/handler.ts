@@ -15,7 +15,7 @@ export const handler = async (
     const token = queryParams["hub.verify_token"];
     const challenge = queryParams["hub.challenge"];
 
-    if (mode === "subscribe" && token === "YOUR_CUSTOM_VERIFY_TOKEN") {
+    if (mode === "subscribe" && token === "max-running-tracker-secret-2026") {
       return {
         statusCode: 200,
         body: JSON.stringify({ "hub.challenge": challenge }),
