@@ -20,14 +20,12 @@ const backend = defineBackend({
 });
 
 // ─── 1. Setup Amazon SQS Queue Infrastructure ────────────────────────────────
-// To completely resolve the cross-stack circular dependency, we attach the SQS 
-// Queue directly inside the existing stravaSync Lambda stack context instead of 
-// generating an isolated nested stack.
 const syncLambda = backend.stravaSync.resources.lambda;
 const syncStack = Stack.of(syncLambda);
 
+// FIX: Increased visibilityTimeout to 30 minutes (1800s) to be 6x the 5-minute (300s) Lambda timeout.
 const queue = new sqs.Queue(syncStack, "StravaWebhookQueue", {
-  visibilityTimeout: Duration.seconds(60), 
+  visibilityTimeout: Duration.seconds(1800), 
 });
 
 // ─── 2. Connect Webhook Function to Queue ───────────────────────────────────
@@ -78,7 +76,7 @@ rule.addTarget(
   new targets.SqsQueue(queue, {
     message: events.RuleTargetInput.fromObject({
       object_type: "activity",
-      aspect_type: "fallback_sync_all", // Custom identifier for your handler to read
+      aspect_type: "fallback_sync_all",
     }),
   })
 );
