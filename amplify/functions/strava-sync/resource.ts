@@ -9,6 +9,7 @@ import { defineFunction, secret } from "@aws-amplify/backend";
  */
 export const stravaSync = defineFunction({
   name: "stravaSync",
+  resourceGroupName: "data",
   environment: {
     STRAVA_CLIENT_ID: secret("STRAVA_CLIENT_ID"),
     STRAVA_CLIENT_SECRET: secret("STRAVA_CLIENT_SECRET"),

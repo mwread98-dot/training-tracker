@@ -7,6 +7,7 @@ import { defineFunction, secret } from "@aws-amplify/backend";
  */
 export const stravaCallback = defineFunction({
   name: "stravaCallback",
+  resourceGroupName: "data", // ◄ Add this line to fix the circular dependency
   environment: {
     STRAVA_CLIENT_ID: secret("STRAVA_CLIENT_ID"),
     STRAVA_CLIENT_SECRET: secret("STRAVA_CLIENT_SECRET"),
