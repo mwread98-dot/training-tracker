@@ -8,7 +8,6 @@ import { defineFunction, secret } from "@aws-amplify/backend";
  * actual stats (distance, duration, pace, heart rate) back to Workout.
  */
 export const stravaSync = defineFunction({
-  name: "stravaSync",
   resourceGroupName: "data",
   environment: {
     STRAVA_CLIENT_ID: secret("STRAVA_CLIENT_ID"),
