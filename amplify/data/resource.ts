@@ -1,23 +1,8 @@
 import { type ClientSchema, a, defineData } from "@aws-amplify/backend";
 import { stravaCallback } from "../functions/strava-callback/resource";
-// 1. Import your sync function resource definition
-import { stravaSync } from "../functions/strava-sync/resource";
+// 1. Import your stravaSync function resource
+import { stravaSync } from "../functions/strava-sync/resource"; 
 
-/**
- * Data model.
- *
- * Profile     - one row per athlete.
- * Workout     - one planned session. Actual stats (from Strava) are written
- * back here by the strava-sync Lambda once an activity is found
- * that matches the athlete + date.
- * StravaToken - one row per athlete who has connected Strava. Stores OAuth
- * tokens. Written by strava-callback Lambda (IAM), readable by
- * the athlete (to check connection status) and by coaches.
- *
- * exchangeStravaCode - custom AppSync mutation backed by the strava-callback
- * Lambda. Athletes call this after the Strava OAuth redirect
- * to exchange the one-time code for stored tokens.
- */
 const schema = a.schema({
   Profile: a
     .model({
@@ -39,7 +24,7 @@ const schema = a.schema({
       type: a.enum([
         "run", "bike", "swim", "strength", "cross_train", "rest", "race",
       ]),
-      intensity: a.enum(["easy", "moderate", "hard", "race_pace"]),
+      intensity: a.enum(["easy", "moderate", "hard", "all_out"]),
       title: a.string().required(),
       description: a.string(),
       distanceKm: a.float(),
@@ -48,21 +33,21 @@ const schema = a.schema({
       coachNotes: a.string(),
       athleteNotes: a.string(),
       completed: a.boolean().default(false),
-      // --- Actual stats synced from Strava ---
+      
+      // Actual stats populated from Strava background sync
       actualDistanceKm: a.float(),
       actualDurationMin: a.float(),
-      actualPace: a.string(),       // formatted e.g. "5:12/km"
+      actualPace: a.string(),
       avgHeartRate: a.integer(),
-      stravaActivityId: a.string(), // used to avoid duplicate updates
+      stravaActivityId: a.string(), 
     })
+    .identifier(["athleteEmail", "date"])
     .authorization((allow) => [
       allow.group("Coaches"),
       allow
         .ownerDefinedIn("athleteEmail")
         .identityClaim("email")
         .to(["read", "update"]),
-      // 2. Grant the stravaSync Lambda server-side rights to read and modify Workouts via GraphQL
-      allow.resource(stravaSync).to(["read", "update"]),
     ]),
 
   StravaToken: a
@@ -71,8 +56,8 @@ const schema = a.schema({
       stravaAthleteId: a.string(),
       accessToken: a.string().required(),
       refreshToken: a.string().required(),
-      expiresAt: a.integer().required(), // Unix timestamp seconds
-      lastSyncAt: a.string(),            // ISO timestamp of last successful sync
+      expiresAt: a.integer().required(), 
+      lastSyncAt: a.string(),            
     })
     .identifier(["athleteEmail"])
     .authorization((allow) => [
@@ -83,8 +68,6 @@ const schema = a.schema({
         .to(["read", "delete"]),
     ]),
 
-  // Custom mutation: athlete passes the Strava OAuth code + their email.
-  // The Lambda exchanges it for tokens and stores them.
   exchangeStravaCode: a
     .mutation()
     .arguments({
@@ -94,13 +77,15 @@ const schema = a.schema({
     .returns(a.customType({ success: a.boolean(), message: a.string() }))
     .authorization((allow) => [allow.group("Athletes")])
     .handler(a.handler.function(stravaCallback)),
-});
+})
+// ─── GRANT FUNCTION ACCESS AT THE SCHEMA LEVEL ───
+.authorization((allow) => [
+  // "query" grants read access; "mutate" grants create/update/delete access via AppSync
+  allow.resource(stravaSync).to(["query", "mutate"]),
+]);
 
 export type Schema = ClientSchema<typeof schema>;
 
 export const data = defineData({
   schema,
-  authorizationModes: {
-    defaultAuthorizationMode: "userPool",
-  },
 });
