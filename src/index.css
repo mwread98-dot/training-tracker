@@ -344,6 +344,111 @@ input, select, textarea {
   font-weight: 500;
 }
 
+/* ── Strava connection banner ── */
+.strava-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  background: #fff3ec;
+  border: 1px solid #f4c6a8;
+  font-size: 14px;
+  color: var(--text);
+  flex-wrap: wrap;
+}
+
+.strava-banner--muted {
+  background: #f5f4f0;
+  border-color: var(--border);
+  color: var(--text-muted);
+}
+
+.strava-banner--success {
+  background: var(--accent-soft);
+  border-color: #b8d9c4;
+  color: var(--accent-dark);
+}
+
+.strava-banner--error {
+  background: #fdecea;
+  border-color: #f5b8b2;
+  color: var(--danger);
+}
+
+.btn-strava {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 8px;
+  background: #fc4c02;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  border: none;
+  cursor: pointer;
+}
+
+.btn-strava:hover {
+  background: #e04400;
+}
+
+/* ── Planned vs actual stats table ── */
+.stats-table {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 14px;
+  font-size: 13px;
+}
+
+.stat-row {
+  display: grid;
+  grid-template-columns: 80px 1fr 1fr;
+  gap: 0;
+}
+
+.stat-row--header {
+  background: #f5f4f0;
+  border-bottom: 1px solid var(--border);
+}
+
+.stat-row:not(:last-child) {
+  border-bottom: 1px solid var(--border);
+}
+
+.stat-label,
+.stat-planned,
+.stat-actual,
+.stat-col-head {
+  padding: 8px 10px;
+}
+
+.stat-label {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.stat-col-head {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.stat-actual {
+  color: var(--accent-dark);
+  font-weight: 500;
+  border-left: 1px solid var(--border);
+}
+
+.stat-planned {
+  border-left: 1px solid var(--border);
+}
+
 @media (max-width: 640px) {
   .calendar-grid {
     gap: 4px;

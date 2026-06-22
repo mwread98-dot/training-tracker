@@ -12,6 +12,8 @@ frontend:
         - npm install --cache .npm --prefer-offline
     build:
       commands:
+        # VITE_STRAVA_CLIENT_ID must be set in Amplify Console → App settings
+        # → Environment variables (not Secrets — it's a public value).
         - npm run build
   artifacts:
     baseDirectory: dist
