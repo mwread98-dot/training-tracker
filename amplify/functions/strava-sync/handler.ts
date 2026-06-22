@@ -5,11 +5,9 @@ import { getAmplifyDataClientConfig } from "@aws-amplify/backend/function/runtim
 import { env } from "$amplify/env/stravaSync";
 import type { Schema } from "../../data/resource";
 
-// ─── Initialize Amplify Data Layer Configs (IAM Mode) ────────────────────────
-const { resourceConfig, libraryOptions } = await getAmplifyDataClientConfig(env);
-Amplify.configure(resourceConfig, libraryOptions);
-
-const client = generateClient<Schema>({ authMode: "iam" });
+// Declare client globally to reuse across warm invocations, but leave uninitialized 
+// at the top level to avoid esbuild/shim bundling errors.
+let client: ReturnType<typeof generateClient<Schema>>;
 
 const CLIENT_ID = process.env.STRAVA_CLIENT_ID!;
 const CLIENT_SECRET = process.env.STRAVA_CLIENT_SECRET!;
@@ -57,7 +55,6 @@ function toDateStr(isoTimestamp: string): string {
 /** Returns a fresh access token, refreshing via Strava if needed */
 async function getFreshToken(token: any): Promise<string> {
   const nowSec = Math.floor(Date.now() / 1000);
-  // Refresh 5 minutes before expiry
   if (token.expiresAt > nowSec + 300) {
     return token.accessToken;
   }
@@ -82,7 +79,6 @@ async function getFreshToken(token: any): Promise<string> {
     expires_at: number;
   };
 
-  // Update stored token through the GraphQL data client
   const { errors } = await client.models.StravaToken.update({
     athleteEmail: token.athleteEmail,
     accessToken: data.access_token,
@@ -97,7 +93,7 @@ async function getFreshToken(token: any): Promise<string> {
   return data.access_token;
 }
 
-/** Fetch recent activities from Strava for one athlete (Used by Backup Fallback Sweep) */
+/** Fetch recent activities from Strava for one athlete */
 async function fetchActivities(
   accessToken: string,
   afterTimestamp: number
@@ -117,7 +113,7 @@ async function fetchActivities(
   return res.json() as Promise<StravaActivity[]>;
 }
 
-/** Fetch a distinct individual activity explicitly (Used by Real-Time Webhook) */
+/** Fetch a distinct individual activity explicitly */
 async function fetchSingleActivity(
   accessToken: string,
   activityId: string
@@ -231,24 +227,27 @@ async function resetWorkout(athleteEmail: string, date: string): Promise<void> {
 // ─── Main Pipeline Handler ───────────────────────────────────────────────────
 
 export const handler = async (event: SQSEvent) => {
+  // Lazily configure Amplify inside the runtime invocation block to bypass root esbuild bundling issues
+  if (!client) {
+    const { resourceConfig, libraryOptions } = await getAmplifyDataClientConfig(env);
+    Amplify.configure(resourceConfig, libraryOptions);
+    client = generateClient<Schema>({ authMode: "iam" });
+  }
+
   console.log(`Strava pipeline processing started. Received ${event.Records.length} records.`);
 
   for (const record of event.Records) {
     try {
       const body = JSON.parse(record.body);
 
-      // ───────────────────────────────────────────────────────────────────────
-      // BRANCH A: BACKUP FALLBACK SWEEP (Every 6 Hours via EventBridge)
-      // ───────────────────────────────────────────────────────────────────────
+      // BRANCH A: BACKUP FALLBACK SWEEP
       if (body.object_type === "activity" && body.aspect_type === "fallback_sync_all") {
         console.log("[Pipeline Trigger] Executing scheduled backup fallback sweep.");
         await runFallbackSweep();
         continue;
       }
 
-      // ───────────────────────────────────────────────────────────────────────
       // BRANCH B: NEAR REAL-TIME WEBHOOK ENGINE - HANDLING DELETIONS
-      // ───────────────────────────────────────────────────────────────────────
       if (body.object_type === "activity" && body.aspect_type === "delete") {
         const activityId = String(body.object_id);
         console.log(`[Pipeline Trigger] Real-time activity deletion detected. Activity: ${activityId}`);
@@ -264,34 +263,28 @@ export const handler = async (event: SQSEvent) => {
         continue;
       }
 
-      // ───────────────────────────────────────────────────────────────────────
       // BRANCH C: NEAR REAL-TIME WEBHOOK ENGINE - HANDLING CREATIONS
-      // ───────────────────────────────────────────────────────────────────────
       if (body.object_type === "activity" && body.aspect_type === "create") {
         const stravaAthleteId = String(body.owner_id);
         const activityId = String(body.object_id);
 
         console.log(`[Pipeline Trigger] Real-time activity upload detected. Activity: ${activityId}, Athlete: ${stravaAthleteId}`);
 
-        // 1. Identify user mapping context
         const token = await findTokenByStravaAthleteId(stravaAthleteId);
         if (!token) {
           console.warn(`[Warning] Activity received but no local Athlete context exists for Strava Athlete ID: ${stravaAthleteId}.`);
           continue;
         }
 
-        // 2. Fetch specific single activity context directly
         const accessToken = await getFreshToken(token);
         const activity = await fetchSingleActivity(accessToken, activityId);
 
-        // 3. Confirm target activity sports profile type is tracked
         const sportLower = activity.sport_type.toLowerCase();
         if (!["run", "ride", "swim", "trailrun", "virtualride"].includes(sportLower)) {
           console.log(`Activity ${activityId} profile type (${activity.sport_type}) isn't synchronized. Skipping.`);
           continue;
         }
 
-        // 4. Map and write updates to the database calendar entry
         const dateStr = toDateStr(activity.start_date);
         const workout = await findMatchingWorkout(token.athleteEmail, dateStr);
 
@@ -335,8 +328,8 @@ async function runFallbackSweep(): Promise<void> {
       console.log(`Sweep auditing athlete profile: ${token.athleteEmail}`);
 
       const afterTimestamp = token.lastSyncAt
-        ? Math.floor(new Date(token.lastSyncAt).getTime() / 1000) - 3600 // 1 hour safety net
-        : Math.floor(Date.now() / 1000) - 30 * 24 * 3600; // 30 day history lookup
+        ? Math.floor(new Date(token.lastSyncAt).getTime() / 1000) - 3600 
+        : Math.floor(Date.now() / 1000) - 30 * 24 * 3600; 
 
       const accessToken = await getFreshToken(token);
       const activities = await fetchActivities(accessToken, afterTimestamp);
@@ -357,7 +350,6 @@ async function runFallbackSweep(): Promise<void> {
         await updateWorkout(workout.athleteEmail, workout.date, activity);
       }
 
-      // Record final verification marker using the GraphQL client
       await client.models.StravaToken.update({
         athleteEmail: token.athleteEmail,
         lastSyncAt: new Date().toISOString(),
