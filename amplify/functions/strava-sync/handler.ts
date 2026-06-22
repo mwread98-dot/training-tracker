@@ -1,20 +1,20 @@
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import {
-  DynamoDBDocumentClient,
-  ScanCommand,
-  UpdateCommand,
-  PutCommand,
-} from "@aws-sdk/lib-dynamodb";
 import { SQSEvent } from "aws-lambda";
+import { Amplify } from "aws-amplify";
+import { generateClient } from "aws-amplify/data";
+import { getAmplifyDataClientConfig } from "@aws-amplify/backend/function/runtime";
+import { env } from "$amplify/env/stravaSync";
+import type { Schema } from "../../data/resource";
 
-const dynamo = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+// ─── Initialize Amplify Data Layer Configs (IAM Mode) ────────────────────────
+const { resourceConfig, libraryOptions } = await getAmplifyDataClientConfig(env);
+Amplify.configure(resourceConfig, libraryOptions);
+
+const client = generateClient<Schema>({ authMode: "iam" });
 
 const CLIENT_ID = process.env.STRAVA_CLIENT_ID!;
 const CLIENT_SECRET = process.env.STRAVA_CLIENT_SECRET!;
-const TOKEN_TABLE = process.env.STRAVA_TOKEN_TABLE!;
-const WORKOUT_TABLE = process.env.WORKOUT_TABLE!;
 
-// ─── Strava types ────────────────────────────────────────────────────────────
+// ─── Strava Incoming types ───────────────────────────────────────────────────
 
 type StravaActivity = {
   id: number;
@@ -27,15 +27,6 @@ type StravaActivity = {
   average_speed: number;   // m/s
   average_heartrate?: number;
   max_heartrate?: number;
-};
-
-type StravaTokenRecord = {
-  athleteEmail: string;
-  stravaAthleteId?: string;
-  accessToken: string;
-  refreshToken: string;
-  expiresAt: number;
-  lastSyncAt?: string;
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -64,7 +55,7 @@ function toDateStr(isoTimestamp: string): string {
 }
 
 /** Returns a fresh access token, refreshing via Strava if needed */
-async function getFreshToken(token: StravaTokenRecord): Promise<string> {
+async function getFreshToken(token: any): Promise<string> {
   const nowSec = Math.floor(Date.now() / 1000);
   // Refresh 5 minutes before expiry
   if (token.expiresAt > nowSec + 300) {
@@ -91,19 +82,17 @@ async function getFreshToken(token: StravaTokenRecord): Promise<string> {
     expires_at: number;
   };
 
-  // Update stored token
-  await dynamo.send(
-    new PutCommand({
-      TableName: TOKEN_TABLE,
-      Item: {
-        ...token,
-        accessToken: data.access_token,
-        refreshToken: data.refresh_token,
-        expiresAt: data.expires_at,
-        updatedAt: new Date().toISOString(),
-      },
-    })
-  );
+  // Update stored token through the GraphQL data client
+  const { errors } = await client.models.StravaToken.update({
+    athleteEmail: token.athleteEmail,
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token,
+    expiresAt: data.expires_at,
+  });
+
+  if (errors) {
+    throw new Error(`Failed to update refreshed token in data store: ${JSON.stringify(errors)}`);
+  }
 
   return data.access_token;
 }
@@ -145,120 +134,97 @@ async function fetchSingleActivity(
 }
 
 /** Find an athlete mapping row by their unique numerical Strava Athlete ID */
-async function findTokenByStravaAthleteId(
-  stravaAthleteId: string
-): Promise<StravaTokenRecord | null> {
-  const result = await dynamo.send(
-    new ScanCommand({
-      TableName: TOKEN_TABLE,
-      FilterExpression: "stravaAthleteId = :id",
-      ExpressionAttributeValues: { ":id": String(stravaAthleteId) },
-    })
-  );
-  return (result.Items?.[0] as StravaTokenRecord) ?? null;
+async function findTokenByStravaAthleteId(stravaAthleteId: string): Promise<any | null> {
+  const { data, errors } = await client.models.StravaToken.list({
+    filter: {
+      stravaAthleteId: { eq: String(stravaAthleteId) },
+    },
+  });
+
+  if (errors) {
+    console.error("Error finding token by Strava Athlete ID:", errors);
+    return null;
+  }
+  return data[0] ?? null;
 }
 
 /** Find a Workout for this athlete on this date that hasn't been synced yet */
 async function findMatchingWorkout(
   athleteEmail: string,
   dateStr: string
-): Promise<{ id: string; stravaActivityId?: string } | null> {
-  const result = await dynamo.send(
-    new ScanCommand({
-      TableName: WORKOUT_TABLE,
-      FilterExpression:
-        "athleteEmail = :email AND #date = :date AND attribute_not_exists(stravaActivityId)",
-      ExpressionAttributeNames: { "#date": "date" },
-      ExpressionAttributeValues: {
-        ":email": athleteEmail,
-        ":date": dateStr,
-      },
-    })
-  );
+): Promise<any | null> {
+  const { data, errors } = await client.models.Workout.list({
+    filter: {
+      athleteEmail: { eq: athleteEmail },
+      date: { eq: dateStr },
+      stravaActivityId: { attributeExists: false },
+    },
+  });
 
-  const items = result.Items ?? [];
-  if (items.length === 0) return null;
-  return (items[0] as { id: string; stravaActivityId?: string }) ?? null;
+  if (errors) {
+    console.error("Error finding matching workout profile:", errors);
+    return null;
+  }
+  return data[0] ?? null;
 }
 
 /** Find a Workout row specifically linked to a distinct Strava Activity ID */
-async function findWorkoutByStravaActivityId(
-  stravaActivityId: string
-): Promise<{ id: string } | null> {
-  const result = await dynamo.send(
-    new ScanCommand({
-      TableName: WORKOUT_TABLE,
-      FilterExpression: "stravaActivityId = :sid",
-      ExpressionAttributeValues: { ":sid": String(stravaActivityId) },
-    })
-  );
-  return (result.Items?.[0] as { id: string }) ?? null;
+async function findWorkoutByStravaActivityId(stravaActivityId: string): Promise<any | null> {
+  const { data, errors } = await client.models.Workout.list({
+    filter: {
+      stravaActivityId: { eq: String(stravaActivityId) },
+    },
+  });
+
+  if (errors) {
+    console.error("Error locating workout by Strava Activity ID:", errors);
+    return null;
+  }
+  return data[0] ?? null;
 }
 
-/** Write actual stats from Strava back to the Workout row */
-async function updateWorkout(
-  workoutId: string,
-  activity: StravaActivity
-): Promise<void> {
+/** Write actual stats from Strava back to the Workout row via AppSync Mutations */
+async function updateWorkout(workoutId: string, activity: StravaActivity): Promise<void> {
   const distanceKm = activity.distance / 1000;
   const durationMin = activity.moving_time / 60;
-  const pace =
-    activity.average_speed > 0 ? speedToPace(activity.average_speed) : undefined;
-  const heartRate = activity.average_heartrate
-    ? Math.round(activity.average_heartrate)
-    : undefined;
+  const pace = activity.average_speed > 0 ? speedToPace(activity.average_speed) : null;
+  const heartRate = activity.average_heartrate ? Math.round(activity.average_heartrate) : null;
 
-  await dynamo.send(
-    new UpdateCommand({
-      TableName: WORKOUT_TABLE,
-      Key: { id: workoutId },
-      UpdateExpression: `
-        SET actualDistanceKm = :dist,
-            actualDurationMin = :dur,
-            actualPace = :pace,
-            avgHeartRate = :hr,
-            stravaActivityId = :sid,
-            completed = :done,
-            updatedAt = :ts
-      `,
-      ExpressionAttributeValues: {
-        ":dist": parseFloat(distanceKm.toFixed(2)),
-        ":dur": parseFloat(durationMin.toFixed(1)),
-        ":pace": pace ?? null,
-        ":hr": heartRate ?? null,
-        ":sid": String(activity.id),
-        ":done": true,
-        ":ts": new Date().toISOString(),
-      },
-    })
-  );
+  const { data: updated, errors } = await client.models.Workout.update({
+    id: workoutId,
+    actualDistanceKm: parseFloat(distanceKm.toFixed(2)),
+    actualDurationMin: parseFloat(durationMin.toFixed(1)),
+    actualPace: pace,
+    avgHeartRate: heartRate,
+    stravaActivityId: String(activity.id),
+    completed: true,
+  });
 
-  console.log(`Updated workout ${workoutId} with Strava activity ${activity.id}`);
+  if (errors) {
+    console.error(`Failed to push GraphQL workout updates for ID ${workoutId}:`, errors);
+  } else {
+    console.log(`Updated workout ${workoutId} with Strava activity ${activity.id} via GraphQL Client.`);
+  }
 }
 
 /** Reset a Workout row, removing its Strava data and un-completing it */
 async function resetWorkout(workoutId: string): Promise<void> {
-  await dynamo.send(
-    new UpdateCommand({
-      TableName: WORKOUT_TABLE,
-      Key: { id: workoutId },
-      UpdateExpression: `
-        SET completed = :done,
-            updatedAt = :ts
-        REMOVE actualDistanceKm,
-               actualDurationMin,
-               actualPace,
-               avgHeartRate,
-               stravaActivityId
-      `,
-      ExpressionAttributeValues: {
-        ":done": false,
-        ":ts": new Date().toISOString(),
-      },
-    })
-  );
+  // In Amplify Data GraphQL Clients, passing null explicitly removes/clears the fields in DynamoDB
+  const { errors } = await client.models.Workout.update({
+    id: workoutId,
+    completed: false,
+    actualDistanceKm: null,
+    actualDurationMin: null,
+    actualPace: null,
+    avgHeartRate: null,
+    stravaActivityId: null,
+  });
 
-  console.log(`Successfully decoupled and reset workout ${workoutId} due to Strava deletion.`);
+  if (errors) {
+    console.error(`Failed to clear/decouple workout row ${workoutId}:`, errors);
+  } else {
+    console.log(`Successfully decoupled and reset workout ${workoutId} due to Strava deletion request.`);
+  }
 }
 
 // ─── Main Pipeline Handler ───────────────────────────────────────────────────
@@ -341,9 +307,6 @@ export const handler = async (event: SQSEvent) => {
 
     } catch (err) {
       console.error(`Execution pipeline error handling SQS record ID ${record.messageId}:`, err);
-      
-      // Crucial: Throwing re-queues the message item to process again later 
-      // protecting against connection timeouts, API spikes, or transient platform problems.
       throw err; 
     }
   }
@@ -354,8 +317,12 @@ export const handler = async (event: SQSEvent) => {
 // ─── Fallback Sweep Routine ──────────────────────────────────────────────────
 
 async function runFallbackSweep(): Promise<void> {
-  const tokensResult = await dynamo.send(new ScanCommand({ TableName: TOKEN_TABLE }));
-  const tokens = (tokensResult.Items ?? []) as StravaTokenRecord[];
+  const { data: tokens, errors: tokenErrors } = await client.models.StravaToken.list();
+
+  if (tokenErrors) {
+    console.error("Sweep concluded early: Failed to map registered tokens:", tokenErrors);
+    return;
+  }
 
   if (tokens.length === 0) {
     console.log("Sweep concluded early: No Strava tokens are registered yet.");
@@ -389,17 +356,12 @@ async function runFallbackSweep(): Promise<void> {
         await updateWorkout(workout.id, activity);
       }
 
-      // Record final verification marker
-      await dynamo.send(
-        new PutCommand({
-          TableName: TOKEN_TABLE,
-          Item: {
-            ...token,
-            lastSyncAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
-        })
-      );
+      // Record final verification marker using the GraphQL client
+      await client.models.StravaToken.update({
+        athleteEmail: token.athleteEmail,
+        lastSyncAt: new Date().toISOString(),
+      });
+      
     } catch (err) {
       console.error(`Sweep sequence failed internally on athlete context: ${token.athleteEmail}:`, err);
     }
