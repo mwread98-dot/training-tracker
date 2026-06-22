@@ -2,10 +2,10 @@ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   DynamoDBDocumentClient,
   ScanCommand,
-  QueryCommand,
   UpdateCommand,
   PutCommand,
 } from "@aws-sdk/lib-dynamodb";
+import { SQSEvent } from "aws-lambda"; // ◄ Added SQS typing resource
 
 const dynamo = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
@@ -108,7 +108,7 @@ async function getFreshToken(token: StravaTokenRecord): Promise<string> {
   return data.access_token;
 }
 
-/** Fetch recent activities from Strava for one athlete */
+/** Fetch recent activities from Strava for one athlete (Used by Backup Fallback Sweep) */
 async function fetchActivities(
   accessToken: string,
   afterTimestamp: number
@@ -128,14 +128,41 @@ async function fetchActivities(
   return res.json() as Promise<StravaActivity[]>;
 }
 
+/** Fetch a distinct individual activity explicitly (Used by Real-Time Webhook) */
+async function fetchSingleActivity(
+  accessToken: string,
+  activityId: string
+): Promise<StravaActivity> {
+  const res = await fetch(`https://www.strava.com/api/v3/activities/${activityId}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  if (!res.ok) {
+    throw new Error(`Strava individual activity fetch failed: ${await res.text()}`);
+  }
+
+  return res.json() as Promise<StravaActivity>;
+}
+
+/** Find an athlete mapping row by their unique numerical Strava Athlete ID */
+async function findTokenByStravaAthleteId(
+  stravaAthleteId: string
+): Promise<StravaTokenRecord | null> {
+  const result = await dynamo.send(
+    new ScanCommand({
+      TableName: TOKEN_TABLE,
+      FilterExpression: "stravaAthleteId = :id",
+      ExpressionAttributeValues: { ":id": String(stravaAthleteId) },
+    })
+  );
+  return (result.Items?.[0] as StravaTokenRecord) ?? null;
+}
+
 /** Find a Workout for this athlete on this date that hasn't been synced yet */
 async function findMatchingWorkout(
   athleteEmail: string,
   dateStr: string
 ): Promise<{ id: string; stravaActivityId?: string } | null> {
-  // DynamoDB scan with filter — acceptable at this scale (<10 athletes,
-  // <a few hundred workouts per table). A GSI on athleteEmail+date would
-  // be the production optimisation when the dataset grows.
   const result = await dynamo.send(
     new ScanCommand({
       TableName: WORKOUT_TABLE,
@@ -151,10 +178,6 @@ async function findMatchingWorkout(
 
   const items = result.Items ?? [];
   if (items.length === 0) return null;
-
-  // If there are multiple workouts on the same day (e.g. AM/PM), pick the
-  // first one that matches the rough sport type (run, bike, swim). Fall back
-  // to the first one if nothing matches.
   return (items[0] as { id: string; stravaActivityId?: string }) ?? null;
 }
 
@@ -171,7 +194,7 @@ async function updateWorkout(
     ? Math.round(activity.average_heartrate)
     : undefined;
 
-  const update = await dynamo.send(
+  await dynamo.send(
     new UpdateCommand({
       TableName: WORKOUT_TABLE,
       Key: { id: workoutId },
@@ -199,39 +222,102 @@ async function updateWorkout(
   console.log(`Updated workout ${workoutId} with Strava activity ${activity.id}`);
 }
 
-// ─── Main handler ─────────────────────────────────────────────────────────────
+// ─── Main Pipeline Handler ───────────────────────────────────────────────────
 
-export const handler = async () => {
-  console.log("Strava sync started");
+export const handler = async (event: SQSEvent) => {
+  console.log(`Strava pipeline processing started. Received ${event.Records.length} records.`);
 
-  // Load all athlete Strava tokens
-  const tokensResult = await dynamo.send(
-    new ScanCommand({ TableName: TOKEN_TABLE })
-  );
+  for (const record of event.Records) {
+    try {
+      const body = JSON.parse(record.body);
+
+      // ───────────────────────────────────────────────────────────────────────
+      // BRANCH A: BACKUP FALLBACK SWEEP (Every 6 Hours via EventBridge)
+      // ───────────────────────────────────────────────────────────────────────
+      if (body.object_type === "activity" && body.aspect_type === "fallback_sync_all") {
+        console.log("[Pipeline Trigger] Executing scheduled backup fallback sweep.");
+        await runFallbackSweep();
+        continue;
+      }
+
+      // ───────────────────────────────────────────────────────────────────────
+      // BRANCH B: NEAR REAL-TIME WEBHOOK ENGINE (Immediate Strava Actions)
+      // ───────────────────────────────────────────────────────────────────────
+      if (body.object_type === "activity" && body.aspect_type === "create") {
+        const stravaAthleteId = String(body.owner_id);
+        const activityId = String(body.object_id);
+
+        console.log(`[Pipeline Trigger] Real-time activity upload detected. Activity: ${activityId}, Athlete: ${stravaAthleteId}`);
+
+        // 1. Identify user mapping context
+        const token = await findTokenByStravaAthleteId(stravaAthleteId);
+        if (!token) {
+          console.warn(`[Warning] Activity received but no local Athlete context exists for Strava Athlete ID: ${stravaAthleteId}.`);
+          continue;
+        }
+
+        // 2. Fetch specific single activity context directly
+        const accessToken = await getFreshToken(token);
+        const activity = await fetchSingleActivity(accessToken, activityId);
+
+        // 3. Confirm target activity sports profile type is tracked
+        const sportLower = activity.sport_type.toLowerCase();
+        if (!["run", "ride", "swim", "trailrun", "virtualride"].includes(sportLower)) {
+          console.log(`Activity ${activityId} profile type (${activity.sport_type}) isn't synchronized. Skipping.`);
+          continue;
+        }
+
+        // 4. Map and write updates to the database calendar entry
+        const dateStr = toDateStr(activity.start_date);
+        const workout = await findMatchingWorkout(token.athleteEmail, dateStr);
+
+        if (!workout) {
+          console.log(`No matching scheduled template found for ${token.athleteEmail} on date ${dateStr}.`);
+          continue;
+        }
+
+        await updateWorkout(workout.id, activity);
+        continue;
+      }
+
+      console.log(`[Notice] Received unknown SQS message signature payload. Skipping evaluation.`);
+
+    } catch (err) {
+      console.error(`Execution pipeline error handling SQS record ID ${record.messageId}:`, err);
+      
+      // Crucial: Throwing re-queues the message item to process again later 
+      // protecting against connection timeouts, API spikes, or transient platform problems.
+      throw err; 
+    }
+  }
+
+  console.log("Strava pipeline block finalized cleanly.");
+};
+
+// ─── Fallback Sweep Routine ──────────────────────────────────────────────────
+
+async function runFallbackSweep(): Promise<void> {
+  const tokensResult = await dynamo.send(new ScanCommand({ TableName: TOKEN_TABLE }));
   const tokens = (tokensResult.Items ?? []) as StravaTokenRecord[];
 
   if (tokens.length === 0) {
-    console.log("No Strava tokens found — nothing to sync");
+    console.log("Sweep concluded early: No Strava tokens are registered yet.");
     return;
   }
 
   for (const token of tokens) {
     try {
-      console.log(`Syncing ${token.athleteEmail}`);
+      console.log(`Sweep auditing athlete profile: ${token.athleteEmail}`);
 
-      // Determine how far back to look. First sync: 30 days. Subsequent: since last sync.
       const afterTimestamp = token.lastSyncAt
-        ? Math.floor(new Date(token.lastSyncAt).getTime() / 1000) - 3600 // 1h buffer
-        : Math.floor(Date.now() / 1000) - 30 * 24 * 3600; // 30 days
+        ? Math.floor(new Date(token.lastSyncAt).getTime() / 1000) - 3600 // 1 hour safety net
+        : Math.floor(Date.now() / 1000) - 30 * 24 * 3600; // 30 day history lookup
 
       const accessToken = await getFreshToken(token);
       const activities = await fetchActivities(accessToken, afterTimestamp);
 
-      console.log(
-        `  Found ${activities.length} activities for ${token.athleteEmail}`
-      );
+      console.log(`  Auditor collected ${activities.length} entries for ${token.athleteEmail}`);
 
-      // Only process running, cycling, and swimming activities
       const relevant = activities.filter((a) =>
         ["run", "ride", "swim", "trailrun", "virtualride"].includes(
           a.sport_type.toLowerCase()
@@ -242,17 +328,11 @@ export const handler = async () => {
         const dateStr = toDateStr(activity.start_date);
         const workout = await findMatchingWorkout(token.athleteEmail, dateStr);
 
-        if (!workout) {
-          console.log(
-            `  No unsynced workout found for ${token.athleteEmail} on ${dateStr}`
-          );
-          continue;
-        }
-
+        if (!workout) continue;
         await updateWorkout(workout.id, activity);
       }
 
-      // Record the sync time
+      // Record final verification marker
       await dynamo.send(
         new PutCommand({
           TableName: TOKEN_TABLE,
@@ -264,10 +344,7 @@ export const handler = async () => {
         })
       );
     } catch (err) {
-      // Don't let one athlete's failure block the others
-      console.error(`Error syncing ${token.athleteEmail}:`, err);
+      console.error(`Sweep sequence failed internally on athlete context: ${token.athleteEmail}:`, err);
     }
   }
-
-  console.log("Strava sync complete");
-};
+}
