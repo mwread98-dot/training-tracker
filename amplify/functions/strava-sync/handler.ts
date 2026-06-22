@@ -2,15 +2,18 @@ import { SQSEvent } from "aws-lambda";
 import { Amplify } from "aws-amplify";
 import { generateClient } from "aws-amplify/data";
 import { getAmplifyDataClientConfig } from "@aws-amplify/backend/function/runtime";
-import { env } from "$amplify/env/stravaSync";
 import type { Schema } from "../../data/resource";
+
+// ─── Runtime Environment (replaces $amplify/env virtual module) ─────────────
+// process.env contains all secrets + env vars defined in defineFunction()
+const env = process.env as Record<string, string | undefined>;
 
 // Declare client globally to reuse across warm invocations, but leave uninitialized 
 // at the top level to avoid esbuild/shim bundling errors.
 let client: ReturnType<typeof generateClient<Schema>>;
 
-const CLIENT_ID = process.env.STRAVA_CLIENT_ID!;
-const CLIENT_SECRET = process.env.STRAVA_CLIENT_SECRET!;
+const CLIENT_ID = env.STRAVA_CLIENT_ID!;
+const CLIENT_SECRET = env.STRAVA_CLIENT_SECRET!;
 
 // ─── Strava Incoming types ───────────────────────────────────────────────────
 
