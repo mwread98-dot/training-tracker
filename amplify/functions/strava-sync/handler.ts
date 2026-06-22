@@ -4,16 +4,17 @@ import { generateClient } from "aws-amplify/data";
 import { getAmplifyDataClientConfig } from "@aws-amplify/backend/function/runtime";
 import type { Schema } from "../../data/resource";
 
-// ─── Runtime Environment (replaces $amplify/env virtual module) ─────────────
+// ─── Runtime Environment ─────────────────────────────────────────────────────
 // process.env contains all secrets + env vars defined in defineFunction()
-const env = process.env as Record<string, string | undefined>;
+// Cast to any to bypass getAmplifyDataClientConfig strict typing in CI/CD
+const env = process.env;
 
 // Declare client globally to reuse across warm invocations, but leave uninitialized 
 // at the top level to avoid esbuild/shim bundling errors.
 let client: ReturnType<typeof generateClient<Schema>>;
 
-const CLIENT_ID = env.STRAVA_CLIENT_ID!;
-const CLIENT_SECRET = env.STRAVA_CLIENT_SECRET!;
+const CLIENT_ID = process.env.STRAVA_CLIENT_ID!;
+const CLIENT_SECRET = process.env.STRAVA_CLIENT_SECRET!;
 
 // ─── Strava Incoming types ───────────────────────────────────────────────────
 
@@ -232,7 +233,7 @@ async function resetWorkout(athleteEmail: string, date: string): Promise<void> {
 export const handler = async (event: SQSEvent) => {
   // Lazily configure Amplify inside the runtime invocation block to bypass root esbuild bundling issues
   if (!client) {
-    const { resourceConfig, libraryOptions } = await getAmplifyDataClientConfig(env);
+    const { resourceConfig, libraryOptions } = await getAmplifyDataClientConfig(env as any);
     Amplify.configure(resourceConfig, libraryOptions);
     client = generateClient<Schema>({ authMode: "iam" });
   }
