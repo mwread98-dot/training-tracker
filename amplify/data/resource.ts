@@ -1,20 +1,22 @@
 import { type ClientSchema, a, defineData } from "@aws-amplify/backend";
 import { stravaCallback } from "../functions/strava-callback/resource";
+// 1. Import your sync function resource definition
+import { stravaSync } from "../functions/strava-sync/resource";
 
 /**
  * Data model.
  *
  * Profile     - one row per athlete.
  * Workout     - one planned session. Actual stats (from Strava) are written
- *               back here by the strava-sync Lambda once an activity is found
- *               that matches the athlete + date.
+ * back here by the strava-sync Lambda once an activity is found
+ * that matches the athlete + date.
  * StravaToken - one row per athlete who has connected Strava. Stores OAuth
- *               tokens. Written by strava-callback Lambda (IAM), readable by
- *               the athlete (to check connection status) and by coaches.
+ * tokens. Written by strava-callback Lambda (IAM), readable by
+ * the athlete (to check connection status) and by coaches.
  *
  * exchangeStravaCode - custom AppSync mutation backed by the strava-callback
- *               Lambda. Athletes call this after the Strava OAuth redirect
- *               to exchange the one-time code for stored tokens.
+ * Lambda. Athletes call this after the Strava OAuth redirect
+ * to exchange the one-time code for stored tokens.
  */
 const schema = a.schema({
   Profile: a
@@ -59,6 +61,8 @@ const schema = a.schema({
         .ownerDefinedIn("athleteEmail")
         .identityClaim("email")
         .to(["read", "update"]),
+      // 2. Grant the stravaSync Lambda server-side rights to read and modify Workouts via GraphQL
+      allow.resource(stravaSync).to(["read", "update"]),
     ]),
 
   StravaToken: a
