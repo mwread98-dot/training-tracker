@@ -184,14 +184,15 @@ async function findWorkoutByStravaActivityId(stravaActivityId: string): Promise<
 }
 
 /** Write actual stats from Strava back to the Workout row via AppSync Mutations */
-async function updateWorkout(workoutId: string, activity: StravaActivity): Promise<void> {
+async function updateWorkout(athleteEmail: string, date: string, activity: StravaActivity): Promise<void> {
   const distanceKm = activity.distance / 1000;
   const durationMin = activity.moving_time / 60;
   const pace = activity.average_speed > 0 ? speedToPace(activity.average_speed) : null;
   const heartRate = activity.average_heartrate ? Math.round(activity.average_heartrate) : null;
 
   const { data: updated, errors } = await client.models.Workout.update({
-    id: workoutId,
+    athleteEmail,
+    date,
     actualDistanceKm: parseFloat(distanceKm.toFixed(2)),
     actualDurationMin: parseFloat(durationMin.toFixed(1)),
     actualPace: pace,
@@ -201,17 +202,17 @@ async function updateWorkout(workoutId: string, activity: StravaActivity): Promi
   });
 
   if (errors) {
-    console.error(`Failed to push GraphQL workout updates for ID ${workoutId}:`, errors);
+    console.error(`Failed to push GraphQL workout updates for ${athleteEmail} on ${date}:`, errors);
   } else {
-    console.log(`Updated workout ${workoutId} with Strava activity ${activity.id} via GraphQL Client.`);
+    console.log(`Updated workout for ${athleteEmail} on ${date} with Strava activity ${activity.id} via GraphQL Client.`);
   }
 }
 
 /** Reset a Workout row, removing its Strava data and un-completing it */
-async function resetWorkout(workoutId: string): Promise<void> {
-  // In Amplify Data GraphQL Clients, passing null explicitly removes/clears the fields in DynamoDB
+async function resetWorkout(athleteEmail: string, date: string): Promise<void> {
   const { errors } = await client.models.Workout.update({
-    id: workoutId,
+    athleteEmail,
+    date,
     completed: false,
     actualDistanceKm: null,
     actualDurationMin: null,
@@ -221,9 +222,9 @@ async function resetWorkout(workoutId: string): Promise<void> {
   });
 
   if (errors) {
-    console.error(`Failed to clear/decouple workout row ${workoutId}:`, errors);
+    console.error(`Failed to clear/decouple workout row for ${athleteEmail} on ${date}:`, errors);
   } else {
-    console.log(`Successfully decoupled and reset workout ${workoutId} due to Strava deletion request.`);
+    console.log(`Successfully decoupled and reset workout for ${athleteEmail} on ${date} due to Strava deletion request.`);
   }
 }
 
@@ -259,7 +260,7 @@ export const handler = async (event: SQSEvent) => {
           continue;
         }
 
-        await resetWorkout(workout.id);
+        await resetWorkout(workout.athleteEmail, workout.date);
         continue;
       }
 
@@ -299,7 +300,7 @@ export const handler = async (event: SQSEvent) => {
           continue;
         }
 
-        await updateWorkout(workout.id, activity);
+        await updateWorkout(workout.athleteEmail, workout.date, activity);
         continue;
       }
 
@@ -353,7 +354,7 @@ async function runFallbackSweep(): Promise<void> {
         const workout = await findMatchingWorkout(token.athleteEmail, dateStr);
 
         if (!workout) continue;
-        await updateWorkout(workout.id, activity);
+        await updateWorkout(workout.athleteEmail, workout.date, activity);
       }
 
       // Record final verification marker using the GraphQL client
