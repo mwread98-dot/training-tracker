@@ -9,20 +9,24 @@ import { auth } from "./auth/resource";
 import { data } from "./data/resource";
 import { stravaCallback } from "./functions/strava-callback/resource";
 import { stravaSync } from "./functions/strava-sync/resource";
-import { stravaWebhook } from "./functions/strava-webhook/resource"; // ◄ Added Webhook Resource import
+import { stravaWebhook } from "./functions/strava-webhook/resource";
 
 const backend = defineBackend({
   auth,
   data,
   stravaCallback,
   stravaSync,
-  stravaWebhook, // ◄ Added Webhook here
+  stravaWebhook,
 });
 
 // ─── 1. Setup Amazon SQS Queue Infrastructure ────────────────────────────────
-const stravaQueueStack = backend.createStack("StravaQueueStack");
-const queue = new sqs.Queue(stravaQueueStack, "StravaWebhookQueue", {
-  // Visibility timeout matches or exceeds processing function limits
+// To completely resolve the cross-stack circular dependency, we attach the SQS 
+// Queue directly inside the existing stravaSync Lambda stack context instead of 
+// generating an isolated nested stack.
+const syncLambda = backend.stravaSync.resources.lambda;
+const syncStack = Stack.of(syncLambda);
+
+const queue = new sqs.Queue(syncStack, "StravaWebhookQueue", {
   visibilityTimeout: Duration.seconds(60), 
 });
 
@@ -44,7 +48,6 @@ backend.addOutput({
 });
 
 // ─── 3. Connect SQS Queue to Ingestion Worker (stravaSync) ──────────────────
-const syncLambda = backend.stravaSync.resources.lambda;
 syncLambda.addEventSource(
   new SqsEventSource(queue, {
     batchSize: 1, // Processes runs 1-by-1 to isolate DB locks & avoid rate spikes
@@ -66,12 +69,7 @@ backend.stravaSync.addEnvironment("STRAVA_TOKEN_TABLE", tokenTable.tableName);
 backend.stravaSync.addEnvironment("WORKOUT_TABLE", workoutTable.tableName);
 
 // ─── 5. EventBridge Fallback Sweep (Every 6 Hours) ───────────────────────────
-// Since stravaSync now expects an SQS payload pattern, we route the schedule
-// rule into the SQS Queue instead of launching the Lambda directly. This ensures
-// consistent message structures and gives you a safety net catch-all.
-const stack = Stack.of(syncLambda);
-
-const rule = new events.Rule(stack, "StravaSyncSchedule", {
+const rule = new events.Rule(syncStack, "StravaSyncSchedule", {
   schedule: events.Schedule.rate(Duration.hours(6)),
   description: "Trigger backup fallback full sync for all athletes via SQS",
 });
