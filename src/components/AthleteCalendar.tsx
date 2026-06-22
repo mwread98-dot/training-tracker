@@ -13,7 +13,8 @@ const POLL_MS = 20000;
 
 // Strava OAuth config. The redirect URI must match exactly what you register
 // in your Strava API app settings at https://www.strava.com/settings/api
-const STRAVA_CLIENT_ID = import.meta.env.VITE_STRAVA_CLIENT_ID ?? "";
+// Bypass the strict compiler check by casting import.meta as any
+const STRAVA_CLIENT_ID = (import.meta as any).env?.VITE_STRAVA_CLIENT_ID ?? "";
 const STRAVA_REDIRECT_URI = window.location.origin;
 
 function buildStravaAuthUrl() {
