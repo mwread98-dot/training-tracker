@@ -24,7 +24,7 @@ const tokenTable = backend.data.resources.tables["StravaToken"];
 
 // strava-callback: needs to write StravaToken rows after a successful OAuth exchange
 tokenTable.grantReadWriteData(backend.stravaCallback.resources.lambda);
-backend.stravaCallback.resources.lambda.addEnvironment(
+backend.stravaCallback.addEnvironment(
   "STRAVA_TOKEN_TABLE",
   tokenTable.tableName
 );
@@ -32,7 +32,7 @@ backend.stravaCallback.resources.lambda.addEnvironment(
 // strava-sync: needs to read all tokens and write actual stats back to Workouts
 tokenTable.grantReadWriteData(backend.stravaSync.resources.lambda);
 workoutTable.grantReadWriteData(backend.stravaSync.resources.lambda);
-backend.stravaSync.resources.lambda.addEnvironment(
+backend.stravaSync.addEnvironment(
   "STRAVA_TOKEN_TABLE",
   tokenTable.tableName
 );
