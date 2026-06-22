@@ -5,7 +5,7 @@ import {
   UpdateCommand,
   PutCommand,
 } from "@aws-sdk/lib-dynamodb";
-import { SQSEvent } from "aws-lambda"; // ◄ Added SQS typing resource
+import { SQSEvent } from "aws-lambda";
 
 const dynamo = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
@@ -181,6 +181,20 @@ async function findMatchingWorkout(
   return (items[0] as { id: string; stravaActivityId?: string }) ?? null;
 }
 
+/** Find a Workout row specifically linked to a distinct Strava Activity ID */
+async function findWorkoutByStravaActivityId(
+  stravaActivityId: string
+): Promise<{ id: string } | null> {
+  const result = await dynamo.send(
+    new ScanCommand({
+      TableName: WORKOUT_TABLE,
+      FilterExpression: "stravaActivityId = :sid",
+      ExpressionAttributeValues: { ":sid": String(stravaActivityId) },
+    })
+  );
+  return (result.Items?.[0] as { id: string }) ?? null;
+}
+
 /** Write actual stats from Strava back to the Workout row */
 async function updateWorkout(
   workoutId: string,
@@ -222,6 +236,31 @@ async function updateWorkout(
   console.log(`Updated workout ${workoutId} with Strava activity ${activity.id}`);
 }
 
+/** Reset a Workout row, removing its Strava data and un-completing it */
+async function resetWorkout(workoutId: string): Promise<void> {
+  await dynamo.send(
+    new UpdateCommand({
+      TableName: WORKOUT_TABLE,
+      Key: { id: workoutId },
+      UpdateExpression: `
+        SET completed = :done,
+            updatedAt = :ts
+        REMOVE actualDistanceKm,
+               actualDurationMin,
+               actualPace,
+               avgHeartRate,
+               stravaActivityId
+      `,
+      ExpressionAttributeValues: {
+        ":done": false,
+        ":ts": new Date().toISOString(),
+      },
+    })
+  );
+
+  console.log(`Successfully decoupled and reset workout ${workoutId} due to Strava deletion.`);
+}
+
 // ─── Main Pipeline Handler ───────────────────────────────────────────────────
 
 export const handler = async (event: SQSEvent) => {
@@ -241,7 +280,25 @@ export const handler = async (event: SQSEvent) => {
       }
 
       // ───────────────────────────────────────────────────────────────────────
-      // BRANCH B: NEAR REAL-TIME WEBHOOK ENGINE (Immediate Strava Actions)
+      // BRANCH B: NEAR REAL-TIME WEBHOOK ENGINE - HANDLING DELETIONS
+      // ───────────────────────────────────────────────────────────────────────
+      if (body.object_type === "activity" && body.aspect_type === "delete") {
+        const activityId = String(body.object_id);
+        console.log(`[Pipeline Trigger] Real-time activity deletion detected. Activity: ${activityId}`);
+
+        const workout = await findWorkoutByStravaActivityId(activityId);
+        
+        if (!workout) {
+          console.log(`No local synchronized workout found for Strava Activity ID: ${activityId}. Skipping removal lifecycle.`);
+          continue;
+        }
+
+        await resetWorkout(workout.id);
+        continue;
+      }
+
+      // ───────────────────────────────────────────────────────────────────────
+      // BRANCH C: NEAR REAL-TIME WEBHOOK ENGINE - HANDLING CREATIONS
       // ───────────────────────────────────────────────────────────────────────
       if (body.object_type === "activity" && body.aspect_type === "create") {
         const stravaAthleteId = String(body.owner_id);
