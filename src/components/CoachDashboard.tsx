@@ -110,10 +110,31 @@ export default function CoachDashboard() {
         actualDistanceKm: w.actualDistanceKm,
         actualDurationMin: w.actualDurationMin,
         source: (w.source as string | null | undefined) ?? (w.stravaActivityId ? "strava" : "coach"),
-        hasActualStats: !!(w.actualDistanceKm || w.actualDurationMin || w.actualPace || w.avgHeartRate),
+        hasActualStats: !!(
+          w.actualDistanceKm ||
+          w.actualDurationMin ||
+          w.actualElapsedDurationMin ||
+          w.actualPace ||
+          w.avgHeartRate
+        ),
       })),
     [workouts]
   );
+
+  const completedActivitiesOnDate = useMemo(() => {
+    if (!formState.open) return [];
+    return workouts.filter(
+      (w) =>
+        w.date === formState.date &&
+        (w.completed ||
+          !!w.stravaActivityId ||
+          !!w.actualDistanceKm ||
+          !!w.actualDurationMin ||
+          !!w.actualElapsedDurationMin ||
+          !!w.actualPace ||
+          !!w.avgHeartRate)
+    );
+  }, [workouts, formState]);
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 24 }}>
@@ -173,7 +194,7 @@ export default function CoachDashboard() {
               }}
             />
             <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 12 }}>
-              Planned sessions and every synced Strava activity appear here. Click an entry to review stats or edit the plan.
+              Planned sessions and every synced Strava activity appear here. Open any date to switch between the planned view and the completed activities recorded that day.
             </p>
           </div>
         ) : (
@@ -224,6 +245,7 @@ export default function CoachDashboard() {
           athleteName={selected.name}
           defaultDate={formState.date}
           existing={formState.existing}
+          completedActivitiesOnDate={completedActivitiesOnDate}
           onSave={saveWorkout}
           onDelete={formState.existing ? deleteWorkout : undefined}
           onClose={() => setFormState({ open: false })}

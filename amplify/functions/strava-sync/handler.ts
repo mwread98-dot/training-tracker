@@ -45,10 +45,15 @@ function toDateStr(isoTimestamp: string): string {
   return isoTimestamp.slice(0, 10);
 }
 
+function toDurationMinutes(seconds: number) {
+  return Number((seconds / 60).toFixed(3));
+}
+
 function toActualStats(activity: StravaActivity) {
   return {
     actualDistanceKm: Number((activity.distance / 1000).toFixed(2)),
-    actualDurationMin: Number((activity.moving_time / 60).toFixed(1)),
+    actualDurationMin: toDurationMinutes(activity.moving_time),
+    actualElapsedDurationMin: toDurationMinutes(activity.elapsed_time),
     actualPace: speedToPace(activity.average_speed),
     avgHeartRate: activity.average_heartrate ? Math.round(activity.average_heartrate) : null,
   };
@@ -239,6 +244,7 @@ async function resetWorkout(entryId: string, athleteEmail: string, date: string)
     completed: false,
     actualDistanceKm: null,
     actualDurationMin: null,
+    actualElapsedDurationMin: null,
     actualPace: null,
     avgHeartRate: null,
     stravaActivityId: null,

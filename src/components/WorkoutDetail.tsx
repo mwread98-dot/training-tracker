@@ -24,7 +24,15 @@ function fmtDuration(totalMin: number | null | undefined) {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
-function StatRow({ label, planned, actual }: { label: string; planned?: string | number | null; actual?: string | number | null }) {
+function StatRow({
+  label,
+  planned,
+  actual,
+}: {
+  label: string;
+  planned?: string | number | null;
+  actual?: string | number | null;
+}) {
   if ((planned === null || planned === undefined || planned === "") && (actual === null || actual === undefined || actual === "")) {
     return null;
   }
@@ -54,6 +62,7 @@ export default function WorkoutDetail({ workout, onSave, onClose }: Props) {
   const hasActual = !!(
     workout.actualDistanceKm ||
     workout.actualDurationMin ||
+    workout.actualElapsedDurationMin ||
     workout.actualPace ||
     workout.avgHeartRate
   );
@@ -132,9 +141,13 @@ export default function WorkoutDetail({ workout, onSave, onClose }: Props) {
               actual={workout.actualDistanceKm ? `${workout.actualDistanceKm.toFixed(2)} km` : null}
             />
             <StatRow
-              label="Duration"
+              label="Moving time"
               planned={fmtDuration(workout.durationMin)}
               actual={fmtDuration(workout.actualDurationMin)}
+            />
+            <StatRow
+              label="Elapsed time"
+              actual={fmtDuration(workout.actualElapsedDurationMin)}
             />
             <StatRow label="Pace" planned={workout.targetPace} actual={workout.actualPace} />
             <StatRow

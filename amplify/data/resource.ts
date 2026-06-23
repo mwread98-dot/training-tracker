@@ -43,6 +43,7 @@ const schema = a
         source: a.string(),
         actualDistanceKm: a.float(),
         actualDurationMin: a.float(),
+        actualElapsedDurationMin: a.float(),
         actualPace: a.string(),
         avgHeartRate: a.integer(),
         stravaActivityId: a.string(),
