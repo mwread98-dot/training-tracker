@@ -70,11 +70,17 @@ function chipLabel(w: CalendarWorkout) {
 
 function formatDuration(totalMin: number) {
   if (totalMin <= 0) return null;
-  const h = Math.floor(totalMin / 60);
-  const m = Math.round(totalMin % 60);
-  if (h === 0) return `${m}m`;
-  if (m === 0) return `${h}h`;
-  return `${h}h ${m}m`;
+
+  const totalSeconds = Math.round(totalMin * 60);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  }
+
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
 export default function CalendarGrid({

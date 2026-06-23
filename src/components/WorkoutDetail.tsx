@@ -9,13 +9,19 @@ type Props = {
   onClose: () => void;
 };
 
-function fmtDuration(min: number | null | undefined) {
-  if (!min || min <= 0) return null;
-  const h = Math.floor(min / 60);
-  const m = Math.round(min % 60);
-  if (h === 0) return `${m}m`;
-  if (m === 0) return `${h}h`;
-  return `${h}h ${m}m`;
+function fmtDuration(totalMin: number | null | undefined) {
+  if (!totalMin || totalMin <= 0) return null;
+
+  const totalSeconds = Math.round(totalMin * 60);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  }
+
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
 function StatRow({ label, planned, actual }: { label: string; planned?: string | number | null; actual?: string | number | null }) {
