@@ -4,19 +4,14 @@ import { fetchUserAttributes, fetchAuthSession } from "aws-amplify/auth";
 import type { Schema } from "../../amplify/data/resource";
 import CalendarGrid, { type CalendarWorkout } from "./CalendarGrid";
 import WorkoutDetail from "./WorkoutDetail";
-
 const client = generateClient<Schema>();
-
 type Workout = Schema["Workout"]["type"];
-
 const POLL_MS = 20000;
-
 // Strava OAuth config. The redirect URI must match exactly what you register
 // in your Strava API app settings at https://www.strava.com/settings/api
 // Bypass the strict compiler check by casting import.meta as any
 const STRAVA_CLIENT_ID = (import.meta as any).env?.VITE_STRAVA_CLIENT_ID ?? "";
 const STRAVA_REDIRECT_URI = window.location.origin;
-
 function buildStravaAuthUrl() {
   const params = new URLSearchParams({
     client_id: STRAVA_CLIENT_ID,
@@ -26,6 +21,10 @@ function buildStravaAuthUrl() {
     scope: "activity:read_all",
   });
   return `https://www.strava.com/oauth/authorize?${params}`;
+}
+
+function getWorkoutKey(workout: Pick<Workout, "athleteEmail" | "date">) {
+  return `${workout.athleteEmail}::${workout.date}`;
 }
 
 export default function AthleteCalendar() {
@@ -39,7 +38,6 @@ export default function AthleteCalendar() {
     "unknown" | "connected" | "not_connected" | "connecting" | "error"
   >("unknown");
   const [stravaError, setStravaError] = useState<string | null>(null);
-
   // ── Auth setup ─────────────────────────────────────────────────────────────
   useEffect(() => {
     (async () => {
@@ -49,28 +47,23 @@ export default function AthleteCalendar() {
       setIdToken(session.tokens?.idToken?.toString() ?? null);
     })();
   }, []);
-
   // ── Strava OAuth redirect handler ──────────────────────────────────────────
   // After Strava redirects back to the app, the URL will contain ?code=...
   // (success) or ?error=access_denied (user cancelled).
   useEffect(() => {
     if (!email || !idToken) return;
-
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
     const error = params.get("error");
-
     // Clear the URL params regardless of outcome so it looks clean
     if (code || error) {
       window.history.replaceState({}, "", window.location.pathname);
     }
-
     if (error) {
       setStravaStatus("error");
       setStravaError("Strava connection was cancelled.");
       return;
     }
-
     if (code) {
       setStravaStatus("connecting");
       (async () => {
@@ -93,7 +86,6 @@ export default function AthleteCalendar() {
       })();
     }
   }, [email, idToken]);
-
   // ── Check existing Strava connection ───────────────────────────────────────
   useEffect(() => {
     if (!email || !idToken || stravaStatus !== "unknown") return;
@@ -109,7 +101,6 @@ export default function AthleteCalendar() {
       }
     })();
   }, [email, idToken, stravaStatus]);
-
   // ── Workout data ───────────────────────────────────────────────────────────
   const loadWorkouts = useCallback(async () => {
     if (!email || !idToken) return;
@@ -120,25 +111,26 @@ export default function AthleteCalendar() {
     });
     setWorkouts(items);
   }, [email, idToken]);
-
   useEffect(() => {
     loadWorkouts();
     const interval = setInterval(loadWorkouts, POLL_MS);
     return () => clearInterval(interval);
   }, [loadWorkouts]);
-
   async function handleSave(data: { completed: boolean; athleteNotes?: string }) {
     if (!selected || !idToken) return;
     await client.models.Workout.update(
-      { id: selected.id, ...data },
+      {
+        athleteEmail: selected.athleteEmail,
+        date: selected.date,
+        ...data,
+      },
       { authMode: "userPool", authToken: idToken }
     );
     setSelected(null);
     loadWorkouts();
   }
-
   const calendarWorkouts: CalendarWorkout[] = workouts.map((w) => ({
-    id: w.id,
+    id: getWorkoutKey(w),
     date: w.date,
     title: w.title,
     type: w.type,
@@ -147,7 +139,6 @@ export default function AthleteCalendar() {
     distanceKm: w.distanceKm,
     durationMin: w.durationMin,
   }));
-
   return (
     <div>
       {/* ── Strava connection banner ── */}
@@ -188,7 +179,6 @@ export default function AthleteCalendar() {
           </div>
         )}
       </div>
-
       <div className="card">
         <CalendarGrid
           year={year}
@@ -205,7 +195,7 @@ export default function AthleteCalendar() {
             setMonth(d.getMonth());
           }}
           onWorkoutClick={(w) => {
-            const full = workouts.find((x) => x.id === w.id) ?? null;
+            const full = workouts.find((x) => getWorkoutKey(x) === w.id) ?? null;
             setSelected(full);
           }}
         />
@@ -225,7 +215,6 @@ export default function AthleteCalendar() {
     </div>
   );
 }
-
 // Official Strava logo mark (SVG, per their brand guidelines)
 function StravaLogo() {
   return (

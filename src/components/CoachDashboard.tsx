@@ -3,15 +3,16 @@ import { generateClient } from "aws-amplify/data";
 import type { Schema } from "../../amplify/data/resource";
 import CalendarGrid, { type CalendarWorkout } from "./CalendarGrid";
 import WorkoutForm from "./WorkoutForm";
-
 const client = generateClient<Schema>();
-
 type Profile = Schema["Profile"]["type"];
 type Workout = Schema["Workout"]["type"];
-
 // How often to silently re-check for changes made by athletes (e.g. marking
 // a session complete) while the coach has the dashboard open.
 const POLL_MS = 20000;
+
+function getWorkoutKey(workout: Pick<Workout, "athleteEmail" | "date">) {
+  return `${workout.athleteEmail}::${workout.date}`;
+}
 
 export default function CoachDashboard() {
   const [athletes, setAthletes] = useState<Profile[]>([]);
@@ -25,24 +26,20 @@ export default function CoachDashboard() {
   const [formState, setFormState] = useState<
     { open: false } | { open: true; date: string; existing: Workout | null }
   >({ open: false });
-
   const loadAthletes = useCallback(async () => {
     const { data } = await client.models.Profile.list();
     setAthletes(data);
     setSelected((prev) => prev ?? data[0] ?? null);
   }, []);
-
   const loadWorkouts = useCallback(async (athleteEmail: string) => {
     const { data } = await client.models.Workout.list({
       filter: { athleteEmail: { eq: athleteEmail } },
     });
     setWorkouts(data);
   }, []);
-
   useEffect(() => {
     loadAthletes();
   }, [loadAthletes]);
-
   useEffect(() => {
     if (!selected) {
       setWorkouts([]);
@@ -52,7 +49,6 @@ export default function CoachDashboard() {
     const interval = setInterval(() => loadWorkouts(selected.email), POLL_MS);
     return () => clearInterval(interval);
   }, [selected, loadWorkouts]);
-
   async function addAthlete(e: React.FormEvent) {
     e.preventDefault();
     if (!newName.trim() || !newEmail.trim()) return;
@@ -65,11 +61,11 @@ export default function CoachDashboard() {
     setShowAddAthlete(false);
     loadAthletes();
   }
-
   async function saveWorkout(data: Partial<Workout> & { date: string; title: string }) {
     if (formState.open && formState.existing) {
       await client.models.Workout.update({
-        id: formState.existing.id,
+        athleteEmail: formState.existing.athleteEmail,
+        date: formState.existing.date,
         ...data,
       });
     } else {
@@ -78,17 +74,18 @@ export default function CoachDashboard() {
     setFormState({ open: false });
     if (selected) loadWorkouts(selected.email);
   }
-
   async function deleteWorkout() {
     if (formState.open && formState.existing) {
-      await client.models.Workout.delete({ id: formState.existing.id });
+      await client.models.Workout.delete({
+        athleteEmail: formState.existing.athleteEmail,
+        date: formState.existing.date,
+      });
     }
     setFormState({ open: false });
     if (selected) loadWorkouts(selected.email);
   }
-
   const calendarWorkouts: CalendarWorkout[] = workouts.map((w) => ({
-    id: w.id,
+    id: getWorkoutKey(w),
     date: w.date,
     title: w.title,
     type: w.type,
@@ -97,7 +94,6 @@ export default function CoachDashboard() {
     distanceKm: w.distanceKm,
     durationMin: w.durationMin,
   }));
-
   return (
     <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 24 }}>
       <div className="card" style={{ height: "fit-content" }}>
@@ -122,7 +118,6 @@ export default function CoachDashboard() {
           ))}
         </div>
       </div>
-
       <div>
         {selected ? (
           <div className="card">
@@ -142,7 +137,7 @@ export default function CoachDashboard() {
               }}
               onDayClick={(iso) => setFormState({ open: true, date: iso, existing: null })}
               onWorkoutClick={(w) => {
-                const full = workouts.find((x) => x.id === w.id) ?? null;
+                const full = workouts.find((x) => getWorkoutKey(x) === w.id) ?? null;
                 setFormState({ open: true, date: w.date, existing: full });
               }}
             />
@@ -154,7 +149,6 @@ export default function CoachDashboard() {
           <div className="empty-state">Add an athlete to start planning their training.</div>
         )}
       </div>
-
       {showAddAthlete && (
         <div className="modal-backdrop" onClick={() => setShowAddAthlete(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -190,7 +184,6 @@ export default function CoachDashboard() {
           </div>
         </div>
       )}
-
       {formState.open && selected && (
         <WorkoutForm
           athleteEmail={selected.email}
