@@ -107,11 +107,15 @@ export default function AthleteCalendar() {
 
   const loadWorkouts = useCallback(async () => {
     if (!email || !idToken) return;
-    const { data: items } = await client.models.Workout.list({
+    const { data: items, errors } = await client.models.Workout.list({
       filter: { athleteEmail: { eq: email } },
       authMode: "userPool",
       authToken: idToken,
     });
+    if (errors?.length) {
+      console.error("Failed to load athlete workouts", errors);
+      return;
+    }
     setWorkouts(sortWorkouts(items));
   }, [email, idToken]);
 
@@ -123,7 +127,7 @@ export default function AthleteCalendar() {
 
   async function handleSave(data: { completed: boolean; athleteNotes?: string }) {
     if (!selected || !idToken) return;
-    await client.models.Workout.update(
+    const { errors } = await client.models.Workout.update(
       {
         entryId: selected.entryId,
         athleteEmail: selected.athleteEmail,
@@ -132,8 +136,12 @@ export default function AthleteCalendar() {
       },
       { authMode: "userPool", authToken: idToken }
     );
+    if (errors?.length) {
+      console.error("Failed to update athlete workout", errors);
+      return;
+    }
     setSelected(null);
-    loadWorkouts();
+    await loadWorkouts();
   }
 
   const calendarWorkouts: CalendarWorkout[] = useMemo(

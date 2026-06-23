@@ -17,6 +17,13 @@ function sortWorkouts(items: Workout[]) {
   });
 }
 
+function generateEntryId() {
+  if (typeof globalThis !== "undefined" && globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
+  return `entry-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export default function CoachDashboard() {
   const [athletes, setAthletes] = useState<Profile[]>([]);
   const [selected, setSelected] = useState<Profile | null>(null);
@@ -26,20 +33,31 @@ export default function CoachDashboard() {
   const [showAddAthlete, setShowAddAthlete] = useState(false);
   const [newName, setNewName] = useState("");
   const [newEmail, setNewEmail] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const [formState, setFormState] = useState<
     { open: false } | { open: true; date: string; existing: Workout | null }
   >({ open: false });
 
   const loadAthletes = useCallback(async () => {
-    const { data } = await client.models.Profile.list();
+    const { data, errors } = await client.models.Profile.list();
+    if (errors?.length) {
+      console.error("Failed to load athletes", errors);
+      setError("Could not load athletes.");
+      return;
+    }
     setAthletes(data);
     setSelected((prev) => prev ?? data[0] ?? null);
   }, []);
 
   const loadWorkouts = useCallback(async (athleteEmail: string) => {
-    const { data } = await client.models.Workout.list({
+    const { data, errors } = await client.models.Workout.list({
       filter: { athleteEmail: { eq: athleteEmail } },
     });
+    if (errors?.length) {
+      console.error("Failed to load workouts", errors);
+      setError("Could not load workouts.");
+      return;
+    }
     setWorkouts(sortWorkouts(data));
   }, []);
 
@@ -60,40 +78,90 @@ export default function CoachDashboard() {
   async function addAthlete(e: React.FormEvent) {
     e.preventDefault();
     if (!newName.trim() || !newEmail.trim()) return;
-    await client.models.Profile.create({
+    setError(null);
+    const { errors } = await client.models.Profile.create({
       email: newEmail.trim().toLowerCase(),
       name: newName.trim(),
     });
+    if (errors?.length) {
+      console.error("Failed to add athlete", errors);
+      setError("Could not add athlete.");
+      return;
+    }
     setNewName("");
     setNewEmail("");
     setShowAddAthlete(false);
-    loadAthletes();
+    await loadAthletes();
   }
 
   async function saveWorkout(data: Partial<Workout> & { date: string; title: string }) {
+    setError(null);
+
     if (formState.open && formState.existing) {
-      await client.models.Workout.update({
+      const { errors } = await client.models.Workout.update({
         entryId: formState.existing.entryId,
         athleteEmail: formState.existing.athleteEmail,
-        ...data,
+        date: data.date,
+        athleteName: data.athleteName,
+        source: data.source,
+        type: data.type,
+        intensity: data.intensity,
+        title: data.title,
+        description: data.description,
+        distanceKm: data.distanceKm,
+        durationMin: data.durationMin,
+        targetPace: data.targetPace,
+        coachNotes: data.coachNotes,
       });
+      if (errors?.length) {
+        console.error("Failed to update workout", errors);
+        setError("Could not save this workout.");
+        return;
+      }
     } else {
-      await client.models.Workout.create({
-        entryId: crypto.randomUUID(),
-        source: "coach",
-        ...data,
-      } as any);
+      const createInput = {
+        entryId: generateEntryId(),
+        athleteEmail: data.athleteEmail!,
+        athleteName: data.athleteName,
+        date: data.date,
+        source: data.source ?? "coach",
+        type: data.type,
+        intensity: data.intensity,
+        title: data.title,
+        description: data.description,
+        distanceKm: data.distanceKm,
+        durationMin: data.durationMin,
+        targetPace: data.targetPace,
+        coachNotes: data.coachNotes,
+        completed: false,
+      };
+      const { errors } = await client.models.Workout.create(createInput as any);
+      if (errors?.length) {
+        console.error("Failed to create workout", errors);
+        setError("Could not create this workout.");
+        return;
+      }
     }
+
     setFormState({ open: false });
-    if (selected) loadWorkouts(selected.email);
+    if (selected) {
+      await loadWorkouts(selected.email);
+    }
   }
 
   async function deleteWorkout() {
-    if (formState.open && formState.existing) {
-      await client.models.Workout.delete({ entryId: formState.existing.entryId });
+    if (!(formState.open && formState.existing)) return;
+    setError(null);
+    const { errors } = await client.models.Workout.delete({ entryId: formState.existing.entryId });
+    if (errors?.length) {
+      console.error("Failed to delete workout", errors);
+      setError("Could not delete this workout.");
+      return;
     }
     setFormState({ open: false });
-    if (selected) loadWorkouts(selected.email);
+    if (selected) {
+      await loadWorkouts(selected.email);
+    }
   }
 
   const calendarWorkouts: CalendarWorkout[] = useMemo(
@@ -152,6 +220,11 @@ export default function CoachDashboard() {
             + Add
           </button>
         </div>
+        {error && (
+          <p style={{ fontSize: 13, color: "#b42318", marginBottom: 12 }}>
+            {error}
+          </p>
+        )}
         <div className="athlete-list">
           {athletes.length === 0 && (
             <p style={{ fontSize: 13, color: "var(--text-muted)" }}>

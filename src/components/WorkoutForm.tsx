@@ -152,7 +152,7 @@ export default function WorkoutForm({
     } else {
       setActiveTab("planned");
     }
-  }, [existing?.completed, existing?.stravaActivityId, hasCompletedActivities, date]);
+  }, [existing?.completed, existing?.stravaActivityId, hasCompletedActivities, existing?.entryId]);
 
   const actualSummary = useMemo(() => {
     if (!existing || !hasActualStats) return null;
@@ -231,7 +231,7 @@ export default function WorkoutForm({
         {activeTab === "completed" && hasCompletedActivities ? (
           <div>
             <p style={{ fontSize: 14, color: "var(--text-muted)", marginTop: 0, marginBottom: 16 }}>
-              Completed activities recorded on {date}. Use the Planned tab to adjust the original session if needed.
+              Completed activities recorded on {existing?.date ?? defaultDate}. Use the Planned tab to adjust the original session if needed.
             </p>
             {completedActivitiesOnDate.map((workout) => (
               <CompletedActivityCard key={workout.entryId} workout={workout} />
@@ -270,7 +270,7 @@ export default function WorkoutForm({
                     Latest synced stats: {actualSummary}
                   </p>
                 )}
-                {source ==="strava" && (
+                {source === "strava" && (
                   <p style={{ marginTop: 6, marginBottom: 0, color: "var(--text-muted)" }}>
                     This entry was created automatically from Strava and is still editable by the coach.
                   </p>
