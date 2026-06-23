@@ -122,18 +122,24 @@ export default function WorkoutForm({
   onDelete,
   onClose,
 }: Props) {
+  // Derive source before any useState that depends on it.
+  const source = (existing?.source as string | null | undefined) ?? (existing?.stravaActivityId ? "strava" : "coach");
+
   const [date, setDate] = useState(existing?.date ?? defaultDate);
   const [type, setType] = useState<string>(existing?.type ?? "run");
   const [intensity, setIntensity] = useState<string>(existing?.intensity ?? "easy");
   const [title, setTitle] = useState(existing?.title ?? "");
   const [description, setDescription] = useState(existing?.description ?? "");
-  const [distanceKm, setDistanceKm] = useState(existing?.distanceKm?.toString() ?? "");
-  const [durationMin, setDurationMin] = useState(existing?.durationMin?.toString() ?? "");
+  // For Strava-auto-created entries, distanceKm/durationMin on the record hold
+  // actual Strava values (not coach-planned values), so we leave the planned
+  // fields blank rather than misleadingly pre-populating them.
+  const isStravaAutoCreated = source === "strava";
+  const [distanceKm, setDistanceKm] = useState(isStravaAutoCreated ? "" : existing?.distanceKm?.toString() ?? "");
+  const [durationMin, setDurationMin] = useState(isStravaAutoCreated ? "" : existing?.durationMin?.toString() ?? "");
   const [targetPace, setTargetPace] = useState(existing?.targetPace ?? "");
   const [coachNotes, setCoachNotes] = useState(existing?.coachNotes ?? "");
 
   const cfg = FIELD_CONFIG[type] ?? FIELD_CONFIG.run;
-  const source = (existing?.source as string | null | undefined) ?? (existing?.stravaActivityId ? "strava" : "coach");
   const hasActualStats = !!(
     existing?.actualDistanceKm ||
     existing?.actualDurationMin ||
@@ -247,37 +253,6 @@ export default function WorkoutForm({
           </div>
         ) : (
           <>
-            {existing && (existing.completed || existing.athleteNotes || hasActualStats) && (
-              <div
-                style={{
-                  background: "var(--accent-soft)",
-                  borderRadius: 8,
-                  padding: "10px 12px",
-                  marginBottom: 16,
-                  fontSize: 14,
-                }}
-              >
-                <strong style={{ color: "var(--accent-dark)" }}>
-                  {existing.completed ? "✓ Marked completed" : "Not marked completed yet"}
-                </strong>
-                {existing.athleteNotes && (
-                  <p style={{ marginTop: 6, marginBottom: 0, color: "var(--text)" }}>
-                    Athlete note: “{existing.athleteNotes}”
-                  </p>
-                )}
-                {hasActualStats && (
-                  <p style={{ marginTop: 6, marginBottom: 0, color: "var(--text)" }}>
-                    Latest synced stats: {actualSummary}
-                  </p>
-                )}
-                {source === "strava" && (
-                  <p style={{ marginTop: 6, marginBottom: 0, color: "var(--text-muted)" }}>
-                    This entry was created automatically from Strava and is still editable by the coach.
-                  </p>
-                )}
-              </div>
-            )}
-
             <form onSubmit={handleSubmit}>
               <div className="row">
                 <div className="field">
