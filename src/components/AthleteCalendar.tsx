@@ -23,14 +23,6 @@ function buildStravaAuthUrl() {
   return `https://www.strava.com/oauth/authorize?${params}`;
 }
 
-function effectiveDistance(workout: Workout) {
-  return workout.actualDistanceKm ?? workout.distanceKm ?? null;
-}
-
-function effectiveDuration(workout: Workout) {
-  return workout.actualDurationMin ?? workout.durationMin ?? null;
-}
-
 function sortWorkouts(items: Workout[]) {
   return [...items].sort((a, b) => {
     if (a.date !== b.date) return a.date.localeCompare(b.date);
@@ -158,10 +150,31 @@ export default function AthleteCalendar() {
         actualDistanceKm: w.actualDistanceKm,
         actualDurationMin: w.actualDurationMin,
         source: (w.source as string | null | undefined) ?? (w.stravaActivityId ? "strava" : "coach"),
-        hasActualStats: !!(w.actualDistanceKm || w.actualDurationMin || w.actualPace || w.avgHeartRate),
+        hasActualStats: !!(
+          w.actualDistanceKm ||
+          w.actualDurationMin ||
+          w.actualElapsedDurationMin ||
+          w.actualPace ||
+          w.avgHeartRate
+        ),
       })),
     [workouts]
   );
+
+  const completedActivitiesOnDate = useMemo(() => {
+    if (!selected) return [];
+    return workouts.filter(
+      (w) =>
+        w.date === selected.date &&
+        (w.completed ||
+          !!w.stravaActivityId ||
+          !!w.actualDistanceKm ||
+          !!w.actualDurationMin ||
+          !!w.actualElapsedDurationMin ||
+          !!w.actualPace ||
+          !!w.avgHeartRate)
+    );
+  }, [workouts, selected]);
 
   const monthHasEntries = workouts.some((w) => w.date.startsWith(`${year}-${String(month + 1).padStart(2, "0")}`));
 
@@ -227,7 +240,12 @@ export default function AthleteCalendar() {
         )}
 
         {selected && (
-          <WorkoutDetail workout={selected} onSave={handleSave} onClose={() => setSelected(null)} />
+          <WorkoutDetail
+            workout={selected}
+            completedActivitiesOnDate={completedActivitiesOnDate}
+            onSave={handleSave}
+            onClose={() => setSelected(null)}
+          />
         )}
       </div>
     </div>
