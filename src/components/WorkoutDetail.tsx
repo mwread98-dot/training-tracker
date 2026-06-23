@@ -25,16 +25,8 @@ function fmtDuration(totalMin: number | null | undefined) {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
-function StatRow({
-  label,
-  planned,
-  actual,
-}: {
-  label: string;
-  planned?: string | number | null;
-  actual?: string | number | null;
-}) {
-  if ((planned === null || planned === undefined || planned === "") && (actual === null || actual === undefined || actual === "")) {
+function PlannedRow({ label, value }: { label: string; value?: string | number | null }) {
+  if (value === null || value === undefined || value === "") {
     return null;
   }
 
@@ -42,7 +34,7 @@ function StatRow({
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "140px minmax(0, 1fr) minmax(0, 1fr)",
+        gridTemplateColumns: "140px minmax(0, 1fr)",
         gap: 12,
         padding: "8px 0",
         borderTop: "1px solid var(--border)",
@@ -50,8 +42,7 @@ function StatRow({
       }}
     >
       <strong>{label}</strong>
-      <span>{planned ?? "—"}</span>
-      <span>{actual ?? "—"}</span>
+      <span>{value}</span>
     </div>
   );
 }
@@ -128,14 +119,14 @@ export default function WorkoutDetail({
   const [completed, setCompleted] = useState(!!workout.completed);
   const [athleteNotes, setAthleteNotes] = useState(workout.athleteNotes ?? "");
 
-  const hasActual = !!(
-    workout.actualDistanceKm ||
-    workout.actualDurationMin ||
-    workout.actualElapsedDurationMin ||
-    workout.actualPace ||
-    workout.avgHeartRate
+  const hasPlanned = !!(
+    workout.description ||
+    workout.distanceKm ||
+    workout.durationMin ||
+    workout.targetPace ||
+    workout.coachNotes ||
+    (workout.source !== "strava" && workout.title)
   );
-  const hasPlanned = !!(workout.distanceKm || workout.durationMin || workout.targetPace);
   const source = (workout.source as string | null | undefined) ?? (workout.stravaActivityId ? "strava" : "coach");
   const completionManagedByStrava = !!workout.stravaActivityId;
   const hasCompletedActivities = completedActivitiesOnDate.length > 0;
@@ -152,11 +143,9 @@ export default function WorkoutDetail({
   }, [workout.entryId, workout.completed, workout.stravaActivityId, hasCompletedActivities]);
 
   const sourceLabel = useMemo(() => {
-    if (source === "strava" && !hasPlanned) return "Strava activity";
-    if (source === "strava" && hasPlanned) return "Planned workout completed via Strava";
-    if (workout.stravaActivityId) return "Planned workout completed via Strava";
+    if (source === "strava" && !hasPlanned) return "Nothing was planned";
     return "Planned workout";
-  }, [source, hasPlanned, workout.stravaActivityId]);
+  }, [source, hasPlanned]);
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -168,34 +157,32 @@ export default function WorkoutDetail({
           {workout.intensity && ` · ${workout.intensity.replace("_", " ")}`}
         </p>
 
-        {(hasCompletedActivities || workout) && (
-          <div
-            style={{
-              display: "inline-flex",
-              background: "var(--surface-muted)",
-              borderRadius: 999,
-              padding: 4,
-              marginBottom: 16,
-              gap: 4,
-            }}
+        <div
+          style={{
+            display: "inline-flex",
+            background: "var(--surface-muted)",
+            borderRadius: 999,
+            padding: 4,
+            marginBottom: 16,
+            gap: 4,
+          }}
+        >
+          <button
+            type="button"
+            className={activeTab === "planned" ? "btn btn-primary" : "btn"}
+            onClick={() => setActiveTab("planned")}
           >
-            <button
-              type="button"
-              className={activeTab === "planned" ? "btn btn-primary" : "btn"}
-              onClick={() => setActiveTab("planned")}
-            >
-              Planned
-            </button>
-            <button
-              type="button"
-              className={activeTab === "completed" ? "btn btn-primary" : "btn"}
-              onClick={() => setActiveTab("completed")}
-              disabled={!hasCompletedActivities}
-            >
-              Completed
-            </button>
-          </div>
-        )}
+            Planned
+          </button>
+          <button
+            type="button"
+            className={activeTab === "completed" ? "btn btn-primary" : "btn"}
+            onClick={() => setActiveTab("completed")}
+            disabled={!hasCompletedActivities}
+          >
+            Completed
+          </button>
+        </div>
 
         {activeTab === "completed" && hasCompletedActivities ? (
           <div>
@@ -221,8 +208,8 @@ export default function WorkoutDetail({
                 display: "inline-block",
                 padding: "4px 8px",
                 borderRadius: 999,
-                background: source === "strava" ? "#fcf0e6" : "var(--accent-soft)",
-                color: source === "strava" ? "#b24b00" : "var(--accent-dark)",
+                background: "var(--accent-soft)",
+                color: "var(--accent-dark)",
                 fontSize: 12,
                 fontWeight: 700,
                 marginBottom: 10,
@@ -231,9 +218,7 @@ export default function WorkoutDetail({
               {sourceLabel}
             </span>
 
-            {workout.description && <p style={{ marginBottom: 14 }}>{workout.description}</p>}
-
-            {(hasPlanned || hasActual) && (
+            {hasPlanned ? (
               <div
                 style={{
                   border: "1px solid var(--border)",
@@ -242,45 +227,29 @@ export default function WorkoutDetail({
                   marginBottom: 16,
                 }}
               >
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "140px minmax(0, 1fr) minmax(0, 1fr)",
-                    gap: 12,
-                    fontSize: 12,
-                    textTransform: "uppercase",
-                    letterSpacing: 0.5,
-                    color: "var(--text-muted)",
-                    marginBottom: 4,
-                  }}
-                >
-                  <span />
-                  <span>Planned</span>
-                  <span>{hasActual ? "Actual (Strava)" : "Actual"}</span>
-                </div>
-                <StatRow
+                {workout.description && (
+                  <p style={{ marginTop: 0, marginBottom: 12 }}>{workout.description}</p>
+                )}
+                <PlannedRow
                   label="Distance"
-                  planned={workout.distanceKm ? `${workout.distanceKm.toFixed(1)} km` : null}
-                  actual={workout.actualDistanceKm ? `${workout.actualDistanceKm.toFixed(2)} km` : null}
+                  value={workout.distanceKm ? `${workout.distanceKm.toFixed(1)} km` : null}
                 />
-                <StatRow
-                  label="Moving time"
-                  planned={fmtDuration(workout.durationMin)}
-                  actual={fmtDuration(workout.actualDurationMin)}
-                />
-                <StatRow label="Elapsed time" actual={fmtDuration(workout.actualElapsedDurationMin)} />
-                <StatRow label="Pace" planned={workout.targetPace} actual={workout.actualPace} />
-                <StatRow
-                  label="Avg HR"
-                  actual={workout.avgHeartRate ? `${workout.avgHeartRate} bpm` : null}
-                />
+                <PlannedRow label="Duration" value={fmtDuration(workout.durationMin)} />
+                <PlannedRow label="Target pace" value={workout.targetPace} />
+                <PlannedRow label="Coach notes" value={workout.coachNotes} />
               </div>
-            )}
-
-            {hasActual && (
-              <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: -8, marginBottom: 16 }}>
-                Actual stats were synced automatically from Strava.
-              </p>
+            ) : (
+              <div
+                style={{
+                  border: "1px solid var(--border)",
+                  borderRadius: 12,
+                  padding: "12px 14px",
+                  marginBottom: 16,
+                  color: "var(--text-muted)",
+                }}
+              >
+                Nothing was planned for this day. Any synced activity details will appear under the Completed tab.
+              </div>
             )}
 
             <div className="field">
