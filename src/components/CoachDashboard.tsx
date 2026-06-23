@@ -63,10 +63,12 @@ export default function CoachDashboard() {
   }
   async function saveWorkout(data: Partial<Workout> & { date: string; title: string }) {
     if (formState.open && formState.existing) {
+      const { date: _newDate, ...rest } = data;
+
       await client.models.Workout.update({
         athleteEmail: formState.existing.athleteEmail,
         date: formState.existing.date,
-        ...data,
+        ...rest,
       });
     } else {
       await client.models.Workout.create(data as any);
