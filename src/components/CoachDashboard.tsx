@@ -1,17 +1,20 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "../../amplify/data/resource";
 import CalendarGrid, { type CalendarWorkout } from "./CalendarGrid";
 import WorkoutForm from "./WorkoutForm";
+
 const client = generateClient<Schema>();
 type Profile = Schema["Profile"]["type"];
 type Workout = Schema["Workout"]["type"];
-// How often to silently re-check for changes made by athletes (e.g. marking
-// a session complete) while the coach has the dashboard open.
+
 const POLL_MS = 20000;
 
-function getWorkoutKey(workout: Pick<Workout, "athleteEmail" | "date">) {
-  return `${workout.athleteEmail}::${workout.date}`;
+function sortWorkouts(items: Workout[]) {
+  return [...items].sort((a, b) => {
+    if (a.date !== b.date) return a.date.localeCompare(b.date);
+    return a.title.localeCompare(b.title);
+  });
 }
 
 export default function CoachDashboard() {
@@ -26,20 +29,24 @@ export default function CoachDashboard() {
   const [formState, setFormState] = useState<
     { open: false } | { open: true; date: string; existing: Workout | null }
   >({ open: false });
+
   const loadAthletes = useCallback(async () => {
     const { data } = await client.models.Profile.list();
     setAthletes(data);
     setSelected((prev) => prev ?? data[0] ?? null);
   }, []);
+
   const loadWorkouts = useCallback(async (athleteEmail: string) => {
     const { data } = await client.models.Workout.list({
       filter: { athleteEmail: { eq: athleteEmail } },
     });
-    setWorkouts(data);
+    setWorkouts(sortWorkouts(data));
   }, []);
+
   useEffect(() => {
     loadAthletes();
   }, [loadAthletes]);
+
   useEffect(() => {
     if (!selected) {
       setWorkouts([]);
@@ -49,6 +56,7 @@ export default function CoachDashboard() {
     const interval = setInterval(() => loadWorkouts(selected.email), POLL_MS);
     return () => clearInterval(interval);
   }, [selected, loadWorkouts]);
+
   async function addAthlete(e: React.FormEvent) {
     e.preventDefault();
     if (!newName.trim() || !newEmail.trim()) return;
@@ -61,47 +69,67 @@ export default function CoachDashboard() {
     setShowAddAthlete(false);
     loadAthletes();
   }
+
   async function saveWorkout(data: Partial<Workout> & { date: string; title: string }) {
     if (formState.open && formState.existing) {
-      const { date: _newDate, ...rest } = data;
-
       await client.models.Workout.update({
+        entryId: formState.existing.entryId,
         athleteEmail: formState.existing.athleteEmail,
-        date: formState.existing.date,
-        ...rest,
+        ...data,
       });
     } else {
-      await client.models.Workout.create(data as any);
+      await client.models.Workout.create({
+        entryId: crypto.randomUUID(),
+        source: "coach",
+        ...data,
+      } as any);
     }
     setFormState({ open: false });
     if (selected) loadWorkouts(selected.email);
   }
+
   async function deleteWorkout() {
     if (formState.open && formState.existing) {
-      await client.models.Workout.delete({
-        athleteEmail: formState.existing.athleteEmail,
-        date: formState.existing.date,
-      });
+      await client.models.Workout.delete({ entryId: formState.existing.entryId });
     }
     setFormState({ open: false });
     if (selected) loadWorkouts(selected.email);
   }
-  const calendarWorkouts: CalendarWorkout[] = workouts.map((w) => ({
-    id: getWorkoutKey(w),
-    date: w.date,
-    title: w.title,
-    type: w.type,
-    intensity: w.intensity,
-    completed: w.completed,
-    distanceKm: w.distanceKm,
-    durationMin: w.durationMin,
-  }));
+
+  const calendarWorkouts: CalendarWorkout[] = useMemo(
+    () =>
+      workouts.map((w) => ({
+        id: w.entryId,
+        date: w.date,
+        title: w.title,
+        type: w.type,
+        intensity: w.intensity,
+        completed: w.completed,
+        distanceKm: w.distanceKm,
+        durationMin: w.durationMin,
+        actualDistanceKm: w.actualDistanceKm,
+        actualDurationMin: w.actualDurationMin,
+        source: (w.source as string | null | undefined) ?? (w.stravaActivityId ? "strava" : "coach"),
+        hasActualStats: !!(w.actualDistanceKm || w.actualDurationMin || w.actualPace || w.avgHeartRate),
+      })),
+    [workouts]
+  );
+
   return (
     <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 24 }}>
       <div className="card" style={{ height: "fit-content" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 10,
+          }}
+        >
           <h3 style={{ fontSize: 15 }}>Athletes</h3>
-          <button className="btn-text" onClick={() => setShowAddAthlete(true)}>+ Add</button>
+          <button className="btn-text" onClick={() => setShowAddAthlete(true)}>
+            + Add
+          </button>
         </div>
         <div className="athlete-list">
           {athletes.length === 0 && (
@@ -120,6 +148,7 @@ export default function CoachDashboard() {
           ))}
         </div>
       </div>
+
       <div>
         {selected ? (
           <div className="card">
@@ -139,18 +168,19 @@ export default function CoachDashboard() {
               }}
               onDayClick={(iso) => setFormState({ open: true, date: iso, existing: null })}
               onWorkoutClick={(w) => {
-                const full = workouts.find((x) => getWorkoutKey(x) === w.id) ?? null;
+                const full = workouts.find((x) => x.entryId === w.id) ?? null;
                 setFormState({ open: true, date: w.date, existing: full });
               }}
             />
             <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 12 }}>
-              Click any day to add a session, or click an existing session to edit it.
+              Planned sessions and every synced Strava activity appear here. Click an entry to review stats or edit the plan.
             </p>
           </div>
         ) : (
           <div className="empty-state">Add an athlete to start planning their training.</div>
         )}
       </div>
+
       {showAddAthlete && (
         <div className="modal-backdrop" onClick={() => setShowAddAthlete(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -170,8 +200,7 @@ export default function CoachDashboard() {
                 />
               </div>
               <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
-                They'll need to sign up with this exact email, and you'll need to add
-                them to the "Athletes" group in Cognito once.
+                They'll need to sign up with this exact email, and you'll need to add them to the "Athletes" group in Cognito once.
               </p>
               <div className="modal-actions">
                 <div />
@@ -179,13 +208,16 @@ export default function CoachDashboard() {
                   <button type="button" className="btn" onClick={() => setShowAddAthlete(false)}>
                     Cancel
                   </button>
-                  <button type="submit" className="btn btn-primary">Add</button>
+                  <button type="submit" className="btn btn-primary">
+                    Add
+                  </button>
                 </div>
               </div>
             </form>
           </div>
         </div>
       )}
+
       {formState.open && selected && (
         <WorkoutForm
           athleteEmail={selected.email}

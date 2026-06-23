@@ -1,17 +1,17 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { generateClient } from "aws-amplify/data";
-import { fetchUserAttributes, fetchAuthSession } from "aws-amplify/auth";
+import { fetchAuthSession, fetchUserAttributes } from "aws-amplify/auth";
 import type { Schema } from "../../amplify/data/resource";
 import CalendarGrid, { type CalendarWorkout } from "./CalendarGrid";
 import WorkoutDetail from "./WorkoutDetail";
+
 const client = generateClient<Schema>();
 type Workout = Schema["Workout"]["type"];
+
 const POLL_MS = 20000;
-// Strava OAuth config. The redirect URI must match exactly what you register
-// in your Strava API app settings at https://www.strava.com/settings/api
-// Bypass the strict compiler check by casting import.meta as any
 const STRAVA_CLIENT_ID = (import.meta as any).env?.VITE_STRAVA_CLIENT_ID ?? "";
 const STRAVA_REDIRECT_URI = window.location.origin;
+
 function buildStravaAuthUrl() {
   const params = new URLSearchParams({
     client_id: STRAVA_CLIENT_ID,
@@ -23,8 +23,19 @@ function buildStravaAuthUrl() {
   return `https://www.strava.com/oauth/authorize?${params}`;
 }
 
-function getWorkoutKey(workout: Pick<Workout, "athleteEmail" | "date">) {
-  return `${workout.athleteEmail}::${workout.date}`;
+function effectiveDistance(workout: Workout) {
+  return workout.actualDistanceKm ?? workout.distanceKm ?? null;
+}
+
+function effectiveDuration(workout: Workout) {
+  return workout.actualDurationMin ?? workout.durationMin ?? null;
+}
+
+function sortWorkouts(items: Workout[]) {
+  return [...items].sort((a, b) => {
+    if (a.date !== b.date) return a.date.localeCompare(b.date);
+    return a.title.localeCompare(b.title);
+  });
 }
 
 export default function AthleteCalendar() {
@@ -38,7 +49,7 @@ export default function AthleteCalendar() {
     "unknown" | "connected" | "not_connected" | "connecting" | "error"
   >("unknown");
   const [stravaError, setStravaError] = useState<string | null>(null);
-  // ── Auth setup ─────────────────────────────────────────────────────────────
+
   useEffect(() => {
     (async () => {
       const attrs = await fetchUserAttributes();
@@ -47,23 +58,23 @@ export default function AthleteCalendar() {
       setIdToken(session.tokens?.idToken?.toString() ?? null);
     })();
   }, []);
-  // ── Strava OAuth redirect handler ──────────────────────────────────────────
-  // After Strava redirects back to the app, the URL will contain ?code=...
-  // (success) or ?error=access_denied (user cancelled).
+
   useEffect(() => {
     if (!email || !idToken) return;
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
     const error = params.get("error");
-    // Clear the URL params regardless of outcome so it looks clean
+
     if (code || error) {
       window.history.replaceState({}, "", window.location.pathname);
     }
+
     if (error) {
       setStravaStatus("error");
       setStravaError("Strava connection was cancelled.");
       return;
     }
+
     if (code) {
       setStravaStatus("connecting");
       (async () => {
@@ -86,7 +97,7 @@ export default function AthleteCalendar() {
       })();
     }
   }, [email, idToken]);
-  // ── Check existing Strava connection ───────────────────────────────────────
+
   useEffect(() => {
     if (!email || !idToken || stravaStatus !== "unknown") return;
     (async () => {
@@ -101,7 +112,7 @@ export default function AthleteCalendar() {
       }
     })();
   }, [email, idToken, stravaStatus]);
-  // ── Workout data ───────────────────────────────────────────────────────────
+
   const loadWorkouts = useCallback(async () => {
     if (!email || !idToken) return;
     const { data: items } = await client.models.Workout.list({
@@ -109,17 +120,20 @@ export default function AthleteCalendar() {
       authMode: "userPool",
       authToken: idToken,
     });
-    setWorkouts(items);
+    setWorkouts(sortWorkouts(items));
   }, [email, idToken]);
+
   useEffect(() => {
     loadWorkouts();
     const interval = setInterval(loadWorkouts, POLL_MS);
     return () => clearInterval(interval);
   }, [loadWorkouts]);
+
   async function handleSave(data: { completed: boolean; athleteNotes?: string }) {
     if (!selected || !idToken) return;
     await client.models.Workout.update(
       {
+        entryId: selected.entryId,
         athleteEmail: selected.athleteEmail,
         date: selected.date,
         ...data,
@@ -129,45 +143,50 @@ export default function AthleteCalendar() {
     setSelected(null);
     loadWorkouts();
   }
-  const calendarWorkouts: CalendarWorkout[] = workouts.map((w) => ({
-    id: getWorkoutKey(w),
-    date: w.date,
-    title: w.title,
-    type: w.type,
-    intensity: w.intensity,
-    completed: w.completed,
-    distanceKm: w.distanceKm,
-    durationMin: w.durationMin,
-  }));
+
+  const calendarWorkouts: CalendarWorkout[] = useMemo(
+    () =>
+      workouts.map((w) => ({
+        id: w.entryId,
+        date: w.date,
+        title: w.title,
+        type: w.type,
+        intensity: w.intensity,
+        completed: w.completed,
+        distanceKm: w.distanceKm,
+        durationMin: w.durationMin,
+        actualDistanceKm: w.actualDistanceKm,
+        actualDurationMin: w.actualDurationMin,
+        source: (w.source as string | null | undefined) ?? (w.stravaActivityId ? "strava" : "coach"),
+        hasActualStats: !!(w.actualDistanceKm || w.actualDurationMin || w.actualPace || w.avgHeartRate),
+      })),
+    [workouts]
+  );
+
+  const monthHasEntries = workouts.some((w) => w.date.startsWith(`${year}-${String(month + 1).padStart(2, "0")}`));
+
   return (
     <div>
-      {/* ── Strava connection banner ── */}
       <div style={{ marginBottom: 16 }}>
         {stravaStatus === "not_connected" && STRAVA_CLIENT_ID && (
           <div className="strava-banner">
             <span>Connect Strava to automatically log your sessions.</span>
-            <a
-              href={buildStravaAuthUrl()}
-              className="btn-strava"
-            >
+            <a href={buildStravaAuthUrl()} className="btn-strava">
               <StravaLogo /> Connect with Strava
             </a>
           </div>
         )}
         {stravaStatus === "connecting" && (
-          <div className="strava-banner strava-banner--muted">
-            Connecting your Strava account…
-          </div>
+          <div className="strava-banner strava-banner--muted">Connecting your Strava account…</div>
         )}
         {stravaStatus === "connected" && (
           <div className="strava-banner strava-banner--success">
-            ✓ Strava connected — your activities will sync automatically every 6 hours.
+            ✓ Strava connected — every synced activity will appear on your calendar, even if it wasn't planned.
           </div>
         )}
         {stravaStatus === "error" && (
           <div className="strava-banner strava-banner--error">
-            {stravaError ?? "Strava connection error."}
-            {" "}
+            {stravaError ?? "Strava connection error."}{" "}
             <a href={buildStravaAuthUrl()} style={{ color: "inherit", fontWeight: 600 }}>
               Try again
             </a>
@@ -179,6 +198,7 @@ export default function AthleteCalendar() {
           </div>
         )}
       </div>
+
       <div className="card">
         <CalendarGrid
           year={year}
@@ -195,27 +215,25 @@ export default function AthleteCalendar() {
             setMonth(d.getMonth());
           }}
           onWorkoutClick={(w) => {
-            const full = workouts.find((x) => getWorkoutKey(x) === w.id) ?? null;
+            const full = workouts.find((x) => x.entryId === w.id) ?? null;
             setSelected(full);
           }}
         />
-        {workouts.length === 0 && (
+
+        {!monthHasEntries && (
           <p style={{ color: "var(--text-muted)", marginTop: 16 }}>
-            No sessions on your calendar yet — your coach will add them here.
+            No sessions on your calendar yet — your coach can plan them here, and any synced Strava activities will show automatically.
           </p>
         )}
+
         {selected && (
-          <WorkoutDetail
-            workout={selected}
-            onSave={handleSave}
-            onClose={() => setSelected(null)}
-          />
+          <WorkoutDetail workout={selected} onSave={handleSave} onClose={() => setSelected(null)} />
         )}
       </div>
     </div>
   );
 }
-// Official Strava logo mark (SVG, per their brand guidelines)
+
 function StravaLogo() {
   return (
     <svg

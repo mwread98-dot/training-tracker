@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { Schema } from "../../amplify/data/resource";
 
 type Workout = Schema["Workout"]["type"];
@@ -16,9 +16,13 @@ type Props = {
 const TYPES = ["run", "bike", "swim", "strength", "cross_train", "rest", "race"];
 const INTENSITIES = ["easy", "moderate", "hard", "race_pace"];
 
-// Which fields actually make sense for each session type. A rest day needs
-// none of them; strength/cross-training don't need distance or pace.
-type FieldConfig = { distance: boolean; duration: boolean; pace: boolean; intensity: boolean };
+type FieldConfig = {
+  distance: boolean;
+  duration: boolean;
+  pace: boolean;
+  intensity: boolean;
+};
+
 const FIELD_CONFIG: Record<string, FieldConfig> = {
   run: { distance: true, duration: true, pace: true, intensity: true },
   bike: { distance: true, duration: true, pace: true, intensity: true },
@@ -28,6 +32,15 @@ const FIELD_CONFIG: Record<string, FieldConfig> = {
   cross_train: { distance: false, duration: true, pace: false, intensity: true },
   rest: { distance: false, duration: false, pace: false, intensity: false },
 };
+
+function fmtDuration(min: number | null | undefined) {
+  if (!min || min <= 0) return null;
+  const h = Math.floor(min / 60);
+  const m = Math.round(min % 60);
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
+}
 
 export default function WorkoutForm({
   athleteEmail,
@@ -43,21 +56,32 @@ export default function WorkoutForm({
   const [intensity, setIntensity] = useState<string>(existing?.intensity ?? "easy");
   const [title, setTitle] = useState(existing?.title ?? "");
   const [description, setDescription] = useState(existing?.description ?? "");
-  const [distanceKm, setDistanceKm] = useState(
-    existing?.distanceKm?.toString() ?? ""
-  );
-  const [durationMin, setDurationMin] = useState(
-    existing?.durationMin?.toString() ?? ""
-  );
+  const [distanceKm, setDistanceKm] = useState(existing?.distanceKm?.toString() ?? "");
+  const [durationMin, setDurationMin] = useState(existing?.durationMin?.toString() ?? "");
   const [targetPace, setTargetPace] = useState(existing?.targetPace ?? "");
   const [coachNotes, setCoachNotes] = useState(existing?.coachNotes ?? "");
 
   const cfg = FIELD_CONFIG[type] ?? FIELD_CONFIG.run;
+  const source = (existing?.source as string | null | undefined) ?? (existing?.stravaActivityId ? "strava" : "coach");
+  const hasActualStats = !!(
+    existing?.actualDistanceKm ||
+    existing?.actualDurationMin ||
+    existing?.actualPace ||
+    existing?.avgHeartRate
+  );
+
+  const actualSummary = useMemo(() => {
+    if (!existing || !hasActualStats) return null;
+    const parts: string[] = [];
+    if (existing.actualDistanceKm) parts.push(`${existing.actualDistanceKm.toFixed(2)} km`);
+    if (existing.actualDurationMin) parts.push(fmtDuration(existing.actualDurationMin) ?? "");
+    if (existing.actualPace) parts.push(existing.actualPace);
+    if (existing.avgHeartRate) parts.push(`${existing.avgHeartRate} bpm avg HR`);
+    return parts.filter(Boolean).join(" · ");
+  }, [existing, hasActualStats]);
 
   function handleTypeChange(newType: string) {
     setType(newType);
-    // Give rest days a sensible default title so the coach doesn't have to
-    // type anything for the most common "nothing planned" case.
     if (newType === "rest" && !title.trim()) {
       setTitle("Rest day");
     }
@@ -66,13 +90,14 @@ export default function WorkoutForm({
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!title.trim()) return;
+
     onSave({
+      entryId: existing?.entryId,
       athleteEmail,
       athleteName,
       date,
+      source: source ?? "coach",
       type: type as Workout["type"],
-      // Only carry over fields that are relevant to this session type, even
-      // if a value is still sitting in state from before the type changed.
       intensity: cfg.intensity ? (intensity as Workout["intensity"]) : undefined,
       title: title.trim(),
       description: description || undefined,
@@ -86,14 +111,10 @@ export default function WorkoutForm({
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2 style={{ marginBottom: 4 }}>
-          {existing ? "Edit workout" : "New workout"}
-        </h2>
-        <p style={{ color: "var(--text-muted)", fontSize: 14, marginBottom: 16 }}>
-          For {athleteName}
-        </p>
+        <h2 style={{ marginBottom: 4 }}>{existing ? "Edit workout" : "New workout"}</h2>
+        <p style={{ color: "var(--text-muted)", fontSize: 14, marginBottom: 16 }}>For {athleteName}</p>
 
-        {existing && (existing.completed || existing.athleteNotes) && (
+        {existing && (existing.completed || existing.athleteNotes || hasActualStats) && (
           <div
             style={{
               background: "var(--accent-soft)",
@@ -104,31 +125,39 @@ export default function WorkoutForm({
             }}
           >
             <strong style={{ color: "var(--accent-dark)" }}>
-              {existing.completed ? "✓ Marked completed by athlete" : "Not marked completed yet"}
+              {existing.completed ? "✓ Marked completed" : "Not marked completed yet"}
             </strong>
             {existing.athleteNotes && (
               <p style={{ marginTop: 6, marginBottom: 0, color: "var(--text)" }}>
-                "{existing.athleteNotes}"
+                Athlete note: “{existing.athleteNotes}”
+              </p>
+            )}
+            {hasActualStats && (
+              <p style={{ marginTop: 6, marginBottom: 0, color: "var(--text)" }}>
+                Synced stats: {actualSummary}
+              </p>
+            )}
+            {source === "strava" && (
+              <p style={{ marginTop: 6, marginBottom: 0, color: "var(--text-muted)" }}>
+                This entry was created automatically from Strava and is still editable by the coach.
               </p>
             )}
           </div>
         )}
+
         <form onSubmit={handleSubmit}>
           <div className="row">
             <div className="field">
               <label>Date</label>
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                required
-              />
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
             </div>
             <div className="field">
               <label>Type</label>
               <select value={type ?? "run"} onChange={(e) => handleTypeChange(e.target.value)}>
                 {TYPES.map((t) => (
-                  <option key={t} value={t}>{t.replace("_", " ")}</option>
+                  <option key={t} value={t}>
+                    {t.replace("_", " ")}
+                  </option>
                 ))}
               </select>
             </div>
@@ -146,8 +175,7 @@ export default function WorkoutForm({
 
           {type === "rest" ? (
             <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 14 }}>
-              No distance, duration, or pace needed for a rest day. Add a note
-              below only if there's something specific (e.g. "light stretching").
+              No distance, duration, or pace needed for a rest day. Add a note below only if there's something specific.
             </p>
           ) : (
             <div className="field">
@@ -165,23 +193,13 @@ export default function WorkoutForm({
               {cfg.distance && (
                 <div className="field">
                   <label>Distance (km)</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={distanceKm}
-                    onChange={(e) => setDistanceKm(e.target.value)}
-                  />
+                  <input type="number" step="0.1" value={distanceKm} onChange={(e) => setDistanceKm(e.target.value)} />
                 </div>
               )}
               {cfg.duration && (
                 <div className="field">
                   <label>Duration (min)</label>
-                  <input
-                    type="number"
-                    step="1"
-                    value={durationMin}
-                    onChange={(e) => setDurationMin(e.target.value)}
-                  />
+                  <input type="number" step="1" value={durationMin} onChange={(e) => setDurationMin(e.target.value)} />
                 </div>
               )}
             </div>
@@ -202,12 +220,11 @@ export default function WorkoutForm({
               {cfg.intensity && (
                 <div className="field">
                   <label>Intensity</label>
-                  <select
-                    value={intensity ?? "easy"}
-                    onChange={(e) => setIntensity(e.target.value)}
-                  >
+                  <select value={intensity ?? "easy"} onChange={(e) => setIntensity(e.target.value)}>
                     {INTENSITIES.map((i) => (
-                      <option key={i} value={i}>{i.replace("_", " ")}</option>
+                      <option key={i} value={i}>
+                        {i.replace("_", " ")}
+                      </option>
                     ))}
                   </select>
                 </div>

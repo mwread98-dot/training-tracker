@@ -2,18 +2,22 @@ import { Fragment, useMemo } from "react";
 
 export type CalendarWorkout = {
   id: string;
-  date: string; // YYYY-MM-DD
+  date: string;
   title: string;
   type?: string | null;
   intensity?: string | null;
   completed?: boolean | null;
   distanceKm?: number | null;
   durationMin?: number | null;
+  actualDistanceKm?: number | null;
+  actualDurationMin?: number | null;
+  source?: string | null;
+  hasActualStats?: boolean | null;
 };
 
 type Props = {
   year: number;
-  month: number; // 0-indexed
+  month: number;
   workouts: CalendarWorkout[];
   onPrevMonth: () => void;
   onNextMonth: () => void;
@@ -21,22 +25,47 @@ type Props = {
   onWorkoutClick?: (workout: CalendarWorkout) => void;
 };
 
-// Monday-first week.
 const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MONTH_NAMES = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
 ];
 
 function toIso(y: number, m: number, d: number) {
   return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
 
+function effectiveDistance(workout: CalendarWorkout) {
+  return workout.actualDistanceKm ?? workout.distanceKm ?? 0;
+}
+
+function effectiveDuration(workout: CalendarWorkout) {
+  return workout.actualDurationMin ?? workout.durationMin ?? 0;
+}
+
 function chipClass(w: CalendarWorkout) {
+  if (w.source === "strava") return "workout-chip completed";
+  if (w.completed && w.hasActualStats) return "workout-chip completed";
   if (w.completed) return "workout-chip completed";
   if (w.type === "rest") return "workout-chip rest";
   if (w.intensity === "hard" || w.intensity === "race_pace") return "workout-chip hard";
   return "workout-chip";
+}
+
+function chipLabel(w: CalendarWorkout) {
+  if (w.source === "strava") return `🏃 ${w.title}`;
+  if (w.hasActualStats) return `✓ ${w.title}`;
+  return w.title;
 }
 
 function formatDuration(totalMin: number) {
@@ -63,16 +92,17 @@ export default function CalendarGrid({
       if (!map[w.date]) map[w.date] = [];
       map[w.date].push(w);
     }
+    for (const date of Object.keys(map)) {
+      map[date].sort((a, b) => a.title.localeCompare(b.title));
+    }
     return map;
   }, [workouts]);
 
   const cells = useMemo(() => {
     const firstOfMonth = new Date(year, month, 1);
-    // getDay(): 0=Sun..6=Sat. Convert to a Monday-first offset: 0=Mon..6=Sun.
     const startOffset = (firstOfMonth.getDay() + 6) % 7;
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const daysInPrevMonth = new Date(year, month, 0).getDate();
-
     const result: { day: number; iso: string; outside: boolean }[] = [];
 
     for (let i = startOffset - 1; i >= 0; i--) {
@@ -81,9 +111,11 @@ export default function CalendarGrid({
       const y = month === 0 ? year - 1 : year;
       result.push({ day: d, iso: toIso(y, m, d), outside: true });
     }
+
     for (let d = 1; d <= daysInMonth; d++) {
       result.push({ day: d, iso: toIso(year, month, d), outside: false });
     }
+
     while (result.length % 7 !== 0 || result.length < 35) {
       const last = result[result.length - 1];
       const [y, m, d] = last.iso.split("-").map(Number);
@@ -94,6 +126,7 @@ export default function CalendarGrid({
         outside: true,
       });
     }
+
     return result;
   }, [year, month]);
 
@@ -104,8 +137,8 @@ export default function CalendarGrid({
       let min = 0;
       for (let j = i; j < i + 7; j++) {
         for (const w of byDate[cells[j].iso] ?? []) {
-          km += w.distanceKm ?? 0;
-          min += w.durationMin ?? 0;
+          km += effectiveDistance(w);
+          min += effectiveDuration(w);
         }
       }
       totals.push({ km, min });
@@ -119,40 +152,44 @@ export default function CalendarGrid({
     let min = 0;
     for (const w of workouts) {
       if (!w.date.startsWith(prefix)) continue;
-      km += w.distanceKm ?? 0;
-      min += w.durationMin ?? 0;
+      km += effectiveDistance(w);
+      min += effectiveDuration(w);
     }
     return { km, min };
   }, [workouts, year, month]);
 
-  const todayIso = toIso(
-    new Date().getFullYear(),
-    new Date().getMonth(),
-    new Date().getDate()
-  );
-
+  const todayIso = toIso(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
   const monthDuration = formatDuration(monthTotal.min);
 
   return (
     <div>
       <div className="calendar-header">
-        <button className="btn" onClick={onPrevMonth}>← Prev</button>
+        <button className="btn" onClick={onPrevMonth}>
+          ← Prev
+        </button>
         <div style={{ textAlign: "center" }}>
-          <h2>{MONTH_NAMES[month]} {year}</h2>
+          <h2>
+            {MONTH_NAMES[month]} {year}
+          </h2>
           {(monthTotal.km > 0 || monthDuration) && (
             <p className="month-total-line">
               {monthTotal.km > 0 && `${monthTotal.km.toFixed(1)} km`}
               {monthTotal.km > 0 && monthDuration && " · "}
               {monthDuration && monthDuration}
-              {" planned this month"}
+              {" logged this month"}
             </p>
           )}
         </div>
-        <button className="btn" onClick={onNextMonth}>Next →</button>
+        <button className="btn" onClick={onNextMonth}>
+          Next →
+        </button>
       </div>
+
       <div className="calendar-grid">
         {DOW.map((d) => (
-          <div className="calendar-dow" key={d}>{d}</div>
+          <div className="calendar-dow" key={d}>
+            {d}
+          </div>
         ))}
         <div className="calendar-dow total-col">Week</div>
 
@@ -161,9 +198,7 @@ export default function CalendarGrid({
             {cells.slice(weekIdx * 7, weekIdx * 7 + 7).map((cell) => (
               <div
                 key={cell.iso}
-                className={`calendar-day ${cell.outside ? "outside" : ""} ${
-                  cell.iso === todayIso ? "today" : ""
-                }`}
+                className={`calendar-day ${cell.outside ? "outside" : ""} ${cell.iso === todayIso ? "today" : ""}`}
                 onClick={() => onDayClick?.(cell.iso)}
                 style={{ cursor: onDayClick ? "pointer" : "default" }}
               >
@@ -178,21 +213,15 @@ export default function CalendarGrid({
                     }}
                     title={w.title}
                   >
-                    {w.title}
+                    {chipLabel(w)}
                   </button>
                 ))}
               </div>
             ))}
             <div className="week-total">
-              {weekTotals[weekIdx].km > 0 && (
-                <strong>{weekTotals[weekIdx].km.toFixed(1)} km</strong>
-              )}
-              {formatDuration(weekTotals[weekIdx].min) && (
-                <span>{formatDuration(weekTotals[weekIdx].min)}</span>
-              )}
-              {weekTotals[weekIdx].km === 0 && weekTotals[weekIdx].min === 0 && (
-                <span>—</span>
-              )}
+              {weekTotals[weekIdx].km > 0 && <strong>{weekTotals[weekIdx].km.toFixed(1)} km</strong>}
+              {formatDuration(weekTotals[weekIdx].min) && <span>{formatDuration(weekTotals[weekIdx].min)}</span>}
+              {weekTotals[weekIdx].km === 0 && weekTotals[weekIdx].min === 0 && <span>—</span>}
             </div>
           </Fragment>
         ))}
