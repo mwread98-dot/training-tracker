@@ -129,7 +129,7 @@ export default function WorkoutForm({
   const [type, setType] = useState<string>(existing?.type ?? "run");
   const [intensity, setIntensity] = useState<string>(existing?.intensity ?? "easy");
   const [title, setTitle] = useState(existing?.title ?? "");
-  const [description, setDescription] = useState(existing?.description ?? "");
+  const [description, setDescription] = useState(isStravaAutoCreated ? "": existing?.description ?? "");
   // For Strava-auto-created entries, distanceKm/durationMin on the record hold
   // actual Strava values (not coach-planned values), so we leave the planned
   // fields blank rather than misleadingly pre-populating them.
