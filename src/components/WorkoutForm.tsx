@@ -55,6 +55,8 @@ function statText(label: string, value: string | null | undefined) {
 
 function CompletedActivityCard({ workout }: { workout: Workout }) {
   const source = (workout.source as string | null | undefined) ?? (workout.stravaActivityId ? "strava" : "coach");
+  const stravaTitle = workout.stravaTitle?.trim() || workout.title;
+  const stravaDescription = workout.stravaDescription?.trim();
   const stats = [
     statText("Distance", workout.actualDistanceKm ? `${workout.actualDistanceKm.toFixed(2)} km` : null),
     statText("Moving", fmtDuration(workout.actualDurationMin)),
@@ -74,7 +76,7 @@ function CompletedActivityCard({ workout }: { workout: Workout }) {
     >
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 8 }}>
         <div>
-          <strong style={{ display: "block", marginBottom: 2 }}>{workout.title}</strong>
+          <strong style={{ display: "block", marginBottom: 2 }}>{stravaTitle}</strong>
           <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
             {(workout.type ?? "session").replace("_", " ")}
             {workout.intensity && ` · ${workout.intensity.replace("_", " ")}`}
@@ -94,6 +96,12 @@ function CompletedActivityCard({ workout }: { workout: Workout }) {
           {source === "strava" ? "Strava" : "Completed"}
         </span>
       </div>
+
+      {stravaDescription && (
+        <p style={{ marginTop: 0, marginBottom: 10, whiteSpace: "pre-wrap", fontSize: 14 }}>
+          {stravaDescription}
+        </p>
+      )}
 
       {stats.length > 0 && (
         <div style={{ display: "grid", gap: 4, fontSize: 14, marginBottom: workout.athleteNotes ? 8 : 0 }}>
@@ -122,18 +130,14 @@ export default function WorkoutForm({
   onDelete,
   onClose,
 }: Props) {
-  // Derive source before any useState that depends on it.
   const source = (existing?.source as string | null | undefined) ?? (existing?.stravaActivityId ? "strava" : "coach");
-
-  // For Strava-auto-created entries, distanceKm/durationMin on the record hold
-  // actual Strava values (not coach-planned values), so we leave the planned
-  // fields blank rather than misleadingly pre-populating them.
   const isStravaAutoCreated = source === "strava";
+
   const [date, setDate] = useState(existing?.date ?? defaultDate);
   const [type, setType] = useState<string>(existing?.type ?? "run");
   const [intensity, setIntensity] = useState<string>(existing?.intensity ?? "easy");
   const [title, setTitle] = useState(existing?.title ?? "");
-  const [description, setDescription] = useState(isStravaAutoCreated ? "": existing?.description ?? "");
+  const [description, setDescription] = useState(isStravaAutoCreated ? "" : existing?.description ?? "");
   const [distanceKm, setDistanceKm] = useState(isStravaAutoCreated ? "" : existing?.distanceKm?.toString() ?? "");
   const [durationMin, setDurationMin] = useState(isStravaAutoCreated ? "" : existing?.durationMin?.toString() ?? "");
   const [targetPace, setTargetPace] = useState(existing?.targetPace ?? "");
@@ -159,17 +163,6 @@ export default function WorkoutForm({
       setActiveTab("planned");
     }
   }, [existing?.completed, existing?.stravaActivityId, hasCompletedActivities, existing?.entryId]);
-
-  const actualSummary = useMemo(() => {
-    if (!existing || !hasActualStats) return null;
-    const parts: string[] = [];
-    if (existing.actualDistanceKm) parts.push(`${existing.actualDistanceKm.toFixed(2)} km`);
-    if (existing.actualDurationMin) parts.push(`Moving ${fmtDuration(existing.actualDurationMin)}`);
-    if (existing.actualElapsedDurationMin) parts.push(`Elapsed ${fmtDuration(existing.actualElapsedDurationMin)}`);
-    if (existing.actualPace) parts.push(existing.actualPace);
-    if (existing.avgHeartRate) parts.push(`${existing.avgHeartRate} bpm avg HR`);
-    return parts.filter(Boolean).join(" · ");
-  }, [existing, hasActualStats]);
 
   function handleTypeChange(newType: string) {
     setType(newType);
@@ -252,133 +245,124 @@ export default function WorkoutForm({
             </div>
           </div>
         ) : (
-          <>
-            <form onSubmit={handleSubmit}>
-              <div className="row">
-                <div className="field">
-                  <label>Date</label>
-                  <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
-                </div>
-                <div className="field">
-                  <label>Type</label>
-                  <select value={type ?? "run"} onChange={(e) => handleTypeChange(e.target.value)}>
-                    {TYPES.map((t) => (
-                      <option key={t} value={t}>
-                        {t.replace("_", " ")}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
+          <form onSubmit={handleSubmit}>
+            <div className="row">
               <div className="field">
-                <label>Title</label>
-                <input
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder={type === "rest" ? "e.g. Rest day" : "e.g. 8mi easy + strides"}
-                  required
-                />
+                <label>Date</label>
+                <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
               </div>
-
-              {type === "rest" ? (
-                <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 14 }}>
-                  No distance, duration, or pace needed for a rest day. Add a note below only if there's something specific.
-                </p>
-              ) : (
-                <div className="field">
-                  <label>Description for athlete</label>
-                  <textarea
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Warm up, main set, cool down…"
-                  />
-                </div>
-              )}
-
-              {(cfg.distance || cfg.duration) && (
-                <div className="row">
-                  {cfg.distance && (
-                    <div className="field">
-                      <label>Distance (km)</label>
-                      <input type="number" step="0.1" value={distanceKm} onChange={(e) => setDistanceKm(e.target.value)} />
-                    </div>
-                  )}
-                  {cfg.duration && (
-                    <div className="field">
-                      <label>Duration (min)</label>
-                      <input type="number" step="1" value={durationMin} onChange={(e) => setDurationMin(e.target.value)} />
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {(cfg.pace || cfg.intensity) && (
-                <div className="row">
-                  {cfg.pace && (
-                    <div className="field">
-                      <label>Target pace</label>
-                      <input
-                        value={targetPace}
-                        onChange={(e) => setTargetPace(e.target.value)}
-                        placeholder="e.g. 4:45/km"
-                      />
-                    </div>
-                  )}
-                  {cfg.intensity && (
-                    <div className="field">
-                      <label>Intensity</label>
-                      <select value={intensity ?? "easy"} onChange={(e) => setIntensity(e.target.value)}>
-                        {INTENSITIES.map((i) => (
-                          <option key={i} value={i}>
-                            {i.replace("_", " ")}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {type === "rest" && (
-                <div className="field">
-                  <label>Note (optional)</label>
-                  <textarea
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="e.g. Full rest, or light stretching/mobility"
-                  />
-                </div>
-              )}
-
               <div className="field">
-                <label>Private coach notes</label>
+                <label>Type</label>
+                <select value={type ?? "run"} onChange={(e) => handleTypeChange(e.target.value)}>
+                  {TYPES.map((t) => (
+                    <option key={t} value={t}>
+                      {t.replace("_", " ")}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="field">
+              <label>Title</label>
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder={type === "rest" ? "e.g. Rest day" : "e.g. 8mi easy + strides"}
+                required
+              />
+            </div>
+            {type === "rest" ? (
+              <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 14 }}>
+                No distance, duration, or pace needed for a rest day. Add a note below only if there's something specific.
+              </p>
+            ) : (
+              <div className="field">
+                <label>Description for athlete</label>
                 <textarea
-                  value={coachNotes}
-                  onChange={(e) => setCoachNotes(e.target.value)}
-                  placeholder="Not shown prominently to athlete — for your own reference"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Warm up, main set, cool down…"
                 />
               </div>
-
-              <div className="modal-actions">
-                <div>
-                  {existing && onDelete && (
-                    <button type="button" className="btn-text" onClick={onDelete}>
-                      Delete
-                    </button>
-                  )}
-                </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button type="button" className="btn" onClick={onClose}>
-                    Cancel
-                  </button>
-                  <button type="submit" className="btn btn-primary">
-                    Save
-                  </button>
-                </div>
+            )}
+            {(cfg.distance || cfg.duration) && (
+              <div className="row">
+                {cfg.distance && (
+                  <div className="field">
+                    <label>Distance (km)</label>
+                    <input type="number" step="0.1" value={distanceKm} onChange={(e) => setDistanceKm(e.target.value)} />
+                  </div>
+                )}
+                {cfg.duration && (
+                  <div className="field">
+                    <label>Duration (min)</label>
+                    <input type="number" step="1" value={durationMin} onChange={(e) => setDurationMin(e.target.value)} />
+                  </div>
+                )}
               </div>
-            </form>
-          </>
+            )}
+            {(cfg.pace || cfg.intensity) && (
+              <div className="row">
+                {cfg.pace && (
+                  <div className="field">
+                    <label>Target pace</label>
+                    <input
+                      value={targetPace}
+                      onChange={(e) => setTargetPace(e.target.value)}
+                      placeholder="e.g. 4:45/km"
+                    />
+                  </div>
+                )}
+                {cfg.intensity && (
+                  <div className="field">
+                    <label>Intensity</label>
+                    <select value={intensity ?? "easy"} onChange={(e) => setIntensity(e.target.value)}>
+                      {INTENSITIES.map((i) => (
+                        <option key={i} value={i}>
+                          {i.replace("_", " ")}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            )}
+            {type === "rest" && (
+              <div className="field">
+                <label>Note (optional)</label>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="e.g. Full rest, or light stretching/mobility"
+                />
+              </div>
+            )}
+            <div className="field">
+              <label>Private coach notes</label>
+              <textarea
+                value={coachNotes}
+                onChange={(e) => setCoachNotes(e.target.value)}
+                placeholder="Not shown prominently to athlete — for your own reference"
+              />
+            </div>
+            <div className="modal-actions">
+              <div>
+                {existing && onDelete && (
+                  <button type="button" className="btn-text" onClick={onDelete}>
+                    Delete
+                  </button>
+                )}
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button type="button" className="btn" onClick={onClose}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  Save
+                </button>
+              </div>
+            </div>
+          </form>
         )}
       </div>
     </div>

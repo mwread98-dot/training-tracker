@@ -47,6 +47,8 @@ const schema = a
         actualPace: a.string(),
         avgHeartRate: a.integer(),
         stravaActivityId: a.string(),
+        stravaTitle: a.string(),
+        stravaDescription: a.string(),
       })
       .identifier(["entryId"])
       .authorization((allow) => [

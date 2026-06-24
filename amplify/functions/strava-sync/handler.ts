@@ -13,6 +13,7 @@ const CLIENT_SECRET = process.env.STRAVA_CLIENT_SECRET!;
 type StravaActivity = {
   id: number;
   name: string;
+  description?: string | null;
   sport_type: string;
   start_date: string;
   distance: number;
@@ -49,6 +50,11 @@ function toDurationMinutes(seconds: number) {
   return Number((seconds / 60).toFixed(3));
 }
 
+function cleanStravaDescription(description: string | null | undefined) {
+  const trimmed = description?.trim();
+  return trimmed ? trimmed : null;
+}
+
 function toActualStats(activity: StravaActivity) {
   return {
     actualDistanceKm: Number((activity.distance / 1000).toFixed(2)),
@@ -56,6 +62,8 @@ function toActualStats(activity: StravaActivity) {
     actualElapsedDurationMin: toDurationMinutes(activity.elapsed_time),
     actualPace: speedToPace(activity.average_speed),
     avgHeartRate: activity.average_heartrate ? Math.round(activity.average_heartrate) : null,
+    stravaTitle: activity.name || `${activity.sport_type} from Strava`,
+    stravaDescription: cleanStravaDescription(activity.description),
   };
 }
 
@@ -219,7 +227,7 @@ async function createWorkoutFromActivity(athleteEmail: string, activity: StravaA
     athleteName,
     date,
     type: sportToType(activity.sport_type),
-    title: activity.name || `${activity.sport_type} from Strava`,
+    title: stats.stravaTitle,
     description: "Synced automatically from Strava.",
     completed: true,
     source: "strava",
@@ -248,6 +256,8 @@ async function resetWorkout(entryId: string, athleteEmail: string, date: string)
     actualPace: null,
     avgHeartRate: null,
     stravaActivityId: null,
+    stravaTitle: null,
+    stravaDescription: null,
   });
 
   if (errors) {
@@ -330,11 +340,11 @@ export const handler = async (event: SQSEvent) => {
         continue;
       }
 
-      if (body.object_type === "activity" && body.aspect_type === "create") {
+      if (body.object_type === "activity" && (body.aspect_type === "create" || body.aspect_type === "update")) {
         const stravaAthleteId = String(body.owner_id);
         const activityId = String(body.object_id);
         console.log(
-          `[Pipeline Trigger] Real-time activity upload detected. Activity: ${activityId}, Athlete: ${stravaAthleteId}`
+          `[Pipeline Trigger] Real-time activity ${body.aspect_type} detected. Activity: ${activityId}, Athlete: ${stravaAthleteId}`
         );
 
         const token = await findTokenByStravaAthleteId(stravaAthleteId);
@@ -384,8 +394,16 @@ async function runFallbackSweep(): Promise<void> {
       const activities = await fetchActivities(accessToken, afterTimestamp);
       console.log(`  Auditor collected ${activities.length} entries for ${token.athleteEmail}`);
 
-      for (const activity of activities) {
-        await syncActivityForAthlete(token.athleteEmail, activity);
+      for (const summaryActivity of activities) {
+        try {
+          // Fetch the detailed activity so we also capture the athlete's latest
+          // title/name and description/caption. The list endpoint does not give
+          // us enough detail for caption updates.
+          const detailedActivity = await fetchSingleActivity(accessToken, String(summaryActivity.id));
+          await syncActivityForAthlete(token.athleteEmail, detailedActivity);
+        } catch (err) {
+          console.error(`Failed to sync detailed Strava activity ${summaryActivity.id}:`, err);
+        }
       }
 
       await client.models.StravaToken.update({
