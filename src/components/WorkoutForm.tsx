@@ -125,15 +125,15 @@ export default function WorkoutForm({
   // Derive source before any useState that depends on it.
   const source = (existing?.source as string | null | undefined) ?? (existing?.stravaActivityId ? "strava" : "coach");
 
+  // For Strava-auto-created entries, distanceKm/durationMin on the record hold
+  // actual Strava values (not coach-planned values), so we leave the planned
+  // fields blank rather than misleadingly pre-populating them.
+  const isStravaAutoCreated = source === "strava";
   const [date, setDate] = useState(existing?.date ?? defaultDate);
   const [type, setType] = useState<string>(existing?.type ?? "run");
   const [intensity, setIntensity] = useState<string>(existing?.intensity ?? "easy");
   const [title, setTitle] = useState(existing?.title ?? "");
   const [description, setDescription] = useState(isStravaAutoCreated ? "": existing?.description ?? "");
-  // For Strava-auto-created entries, distanceKm/durationMin on the record hold
-  // actual Strava values (not coach-planned values), so we leave the planned
-  // fields blank rather than misleadingly pre-populating them.
-  const isStravaAutoCreated = source === "strava";
   const [distanceKm, setDistanceKm] = useState(isStravaAutoCreated ? "" : existing?.distanceKm?.toString() ?? "");
   const [durationMin, setDurationMin] = useState(isStravaAutoCreated ? "" : existing?.durationMin?.toString() ?? "");
   const [targetPace, setTargetPace] = useState(existing?.targetPace ?? "");
