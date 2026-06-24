@@ -52,7 +52,17 @@ function statText(label: string, value: string | null | undefined) {
 }
 
 function CompletedActivityCard({ workout }: { workout: Workout }) {
-  const source = (workout.source as string | null | undefined) ?? (workout.stravaActivityId ? "strava" : "coach");
+  const source =
+    (workout.source as string | null | undefined) ??
+    (workout.stravaActivityId ? "strava" : "coach");
+
+  // Strava metadata is intentionally separate from the coach-planned title and
+  // description. If a planned workout was matched with a Strava activity, this
+  // lets the Completed tab show the athlete's Strava caption without changing
+  // the Planned tab.
+  const stravaTitle = workout.stravaTitle?.trim() || workout.title;
+  const stravaDescription = workout.stravaDescription?.trim();
+
   const stats = [
     statText("Distance", workout.actualDistanceKm ? `${workout.actualDistanceKm.toFixed(2)} km` : null),
     statText("Moving", fmtDuration(workout.actualDurationMin)),
@@ -72,7 +82,7 @@ function CompletedActivityCard({ workout }: { workout: Workout }) {
     >
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 8 }}>
         <div>
-          <strong style={{ display: "block", marginBottom: 2 }}>{workout.title}</strong>
+          <strong style={{ display: "block", marginBottom: 2 }}>{stravaTitle}</strong>
           <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
             {(workout.type ?? "session").replace("_", " ")}
             {workout.intensity && ` · ${workout.intensity.replace("_", " ")}`}
@@ -92,6 +102,19 @@ function CompletedActivityCard({ workout }: { workout: Workout }) {
           {source === "strava" ? "Strava" : "Completed"}
         </span>
       </div>
+
+      {stravaDescription && (
+        <p
+          style={{
+            marginTop: 0,
+            marginBottom: 10,
+            whiteSpace: "pre-wrap",
+            fontSize: 14,
+          }}
+        >
+          {stravaDescription}
+        </p>
+      )}
 
       {stats.length > 0 && (
         <div style={{ display: "grid", gap: 4, fontSize: 14, marginBottom: workout.athleteNotes ? 8 : 0 }}>
@@ -127,9 +150,13 @@ export default function WorkoutDetail({
     workout.coachNotes ||
     (workout.source !== "strava" && workout.title)
   );
-  const source = (workout.source as string | null | undefined) ?? (workout.stravaActivityId ? "strava" : "coach");
+
+  const source =
+    (workout.source as string | null | undefined) ??
+    (workout.stravaActivityId ? "strava" : "coach");
   const completionManagedByStrava = !!workout.stravaActivityId;
   const hasCompletedActivities = completedActivitiesOnDate.length > 0;
+
   const [activeTab, setActiveTab] = useState<"planned" | "completed">(
     hasCompletedActivities && (workout.completed || !!workout.stravaActivityId) ? "completed" : "planned"
   );
