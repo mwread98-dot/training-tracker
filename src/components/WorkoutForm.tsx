@@ -219,10 +219,6 @@ export default function WorkoutForm({
 
         {activeTab === "completed" && hasCompletedActivities ? (
           <div>
-            <p style={{ fontSize: 14, color: "var(--text-muted)", marginTop: 0, marginBottom: 16 }}>
-              Completed activities recorded on {existing?.date ?? defaultDate}. Athlete notes from the athlete view are shown below.
-            </p>
-
             {completedActivitiesOnDate.map((workout) => (
               <CompletedActivityCard key={workout.entryId} workout={workout} />
             ))}
