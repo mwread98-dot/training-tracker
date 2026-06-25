@@ -189,10 +189,6 @@ export default function WorkoutDetail({
 
         {activeTab === "completed" && hasCompletedActivities ? (
           <div>
-            <p style={{ fontSize: 14, color: "var(--text-muted)", marginTop: 0, marginBottom: 16 }}>
-              Completed activities recorded on {workout.date}. Your notes are shown once below the synced activity data.
-            </p>
-
             {completedActivitiesOnDate.map((activity) => (
               <CompletedActivityCard key={activity.entryId} workout={activity} />
             ))}
@@ -205,12 +201,6 @@ export default function WorkoutDetail({
                 placeholder="How did it feel? Any weather, terrain, fatigue, or niggles to mention?"
               />
             </div>
-
-            {athleteNotes && (
-              <p style={{ fontSize: 14, color: "var(--text-muted)", marginTop: 8, marginBottom: 0 }}>
-                Saved here so your coach can see it on their completed view.
-              </p>
-            )}
 
             <div className="modal-actions">
               <div />
