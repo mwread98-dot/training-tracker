@@ -94,17 +94,11 @@ function CompletedActivityCard({ workout }: { workout: Workout }) {
       )}
 
       {stats.length > 0 && (
-        <div style={{ display: "grid", gap: 4, fontSize: 14, marginBottom: workout.athleteNotes ? 8 : 0 }}>
+        <div style={{ display: "grid", gap: 4, fontSize: 14 }}>
           {stats.map((item) => (
             <span key={item}>{item}</span>
           ))}
         </div>
-      )}
-
-      {workout.athleteNotes && (
-        <p style={{ margin: 0, color: "var(--text-muted)", fontSize: 14 }}>
-          Your note: “{workout.athleteNotes}”
-        </p>
       )}
     </div>
   );
@@ -196,7 +190,7 @@ export default function WorkoutDetail({
         {activeTab === "completed" && hasCompletedActivities ? (
           <div>
             <p style={{ fontSize: 14, color: "var(--text-muted)", marginTop: 0, marginBottom: 16 }}>
-              Completed activities recorded on {workout.date}. Your notes now appear directly below the synced activity data.
+              Completed activities recorded on {workout.date}. Your notes are shown once below the synced activity data.
             </p>
 
             {completedActivitiesOnDate.map((activity) => (

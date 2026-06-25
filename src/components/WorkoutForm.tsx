@@ -101,17 +101,11 @@ function CompletedActivityCard({ workout }: { workout: Workout }) {
       )}
 
       {stats.length > 0 && (
-        <div style={{ display: "grid", gap: 4, fontSize: 14, marginBottom: workout.athleteNotes ? 8 : 0 }}>
+        <div style={{ display: "grid", gap: 4, fontSize: 14 }}>
           {stats.map((item) => (
             <span key={item}>{item}</span>
           ))}
         </div>
-      )}
-
-      {workout.athleteNotes && (
-        <p style={{ margin: 0, color: "var(--text-muted)", fontSize: 14 }}>
-          Athlete note: “{workout.athleteNotes}”
-        </p>
       )}
     </div>
   );
