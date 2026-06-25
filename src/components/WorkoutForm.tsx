@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import type { Schema } from "../../amplify/data/resource";
 
 type Workout = Schema["Workout"]["type"];
@@ -36,16 +36,13 @@ const FIELD_CONFIG: Record<string, FieldConfig> = {
 
 function fmtDuration(totalMin: number | null | undefined) {
   if (!totalMin || totalMin <= 0) return null;
-
   const totalSeconds = Math.round(totalMin * 60);
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
-
   if (hours > 0) {
     return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
   }
-
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
@@ -144,14 +141,8 @@ export default function WorkoutForm({
   const [coachNotes, setCoachNotes] = useState(existing?.coachNotes ?? "");
 
   const cfg = FIELD_CONFIG[type] ?? FIELD_CONFIG.run;
-  const hasActualStats = !!(
-    existing?.actualDistanceKm ||
-    existing?.actualDurationMin ||
-    existing?.actualElapsedDurationMin ||
-    existing?.actualPace ||
-    existing?.avgHeartRate
-  );
   const hasCompletedActivities = completedActivitiesOnDate.length > 0;
+
   const [activeTab, setActiveTab] = useState<"planned" | "completed">(
     hasCompletedActivities && (existing?.completed || !!existing?.stravaActivityId) ? "completed" : "planned"
   );
@@ -174,7 +165,6 @@ export default function WorkoutForm({
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!title.trim()) return;
-
     onSave({
       entryId: existing?.entryId,
       athleteEmail,
@@ -230,11 +220,28 @@ export default function WorkoutForm({
         {activeTab === "completed" && hasCompletedActivities ? (
           <div>
             <p style={{ fontSize: 14, color: "var(--text-muted)", marginTop: 0, marginBottom: 16 }}>
-              Completed activities recorded on {existing?.date ?? defaultDate}. Use the Planned tab to adjust the original session if needed.
+              Completed activities recorded on {existing?.date ?? defaultDate}. Athlete notes from the athlete view are shown below.
             </p>
+
             {completedActivitiesOnDate.map((workout) => (
               <CompletedActivityCard key={workout.entryId} workout={workout} />
             ))}
+
+            {existing?.athleteNotes && (
+              <div
+                style={{
+                  borderTop: "1px solid var(--border)",
+                  marginTop: 12,
+                  paddingTop: 12,
+                }}
+              >
+                <strong style={{ display: "block", marginBottom: 6 }}>Athlete notes</strong>
+                <p style={{ margin: 0, whiteSpace: "pre-wrap", color: "var(--text-muted)", fontSize: 14 }}>
+                  {existing.athleteNotes}
+                </p>
+              </div>
+            )}
+
             <div className="modal-actions">
               <div />
               <div style={{ display: "flex", gap: 8 }}>
@@ -262,6 +269,7 @@ export default function WorkoutForm({
                 </select>
               </div>
             </div>
+
             <div className="field">
               <label>Title</label>
               <input
@@ -271,6 +279,7 @@ export default function WorkoutForm({
                 required
               />
             </div>
+
             {type === "rest" ? (
               <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 14 }}>
                 No distance, duration, or pace needed for a rest day. Add a note below only if there's something specific.
@@ -285,6 +294,7 @@ export default function WorkoutForm({
                 />
               </div>
             )}
+
             {(cfg.distance || cfg.duration) && (
               <div className="row">
                 {cfg.distance && (
@@ -301,6 +311,7 @@ export default function WorkoutForm({
                 )}
               </div>
             )}
+
             {(cfg.pace || cfg.intensity) && (
               <div className="row">
                 {cfg.pace && (
@@ -327,6 +338,7 @@ export default function WorkoutForm({
                 )}
               </div>
             )}
+
             {type === "rest" && (
               <div className="field">
                 <label>Note (optional)</label>
@@ -337,6 +349,7 @@ export default function WorkoutForm({
                 />
               </div>
             )}
+
             <div className="field">
               <label>Private coach notes</label>
               <textarea
@@ -345,6 +358,7 @@ export default function WorkoutForm({
                 placeholder="Not shown prominently to athlete — for your own reference"
               />
             </div>
+
             <div className="modal-actions">
               <div>
                 {existing && onDelete && (

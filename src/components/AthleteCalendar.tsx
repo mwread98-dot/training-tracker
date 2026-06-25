@@ -202,7 +202,7 @@ export default function AthleteCalendar() {
         )}
         {stravaStatus === "connected" && (
           <div className="strava-banner strava-banner--success">
-            ✓ Strava connected — every synced activity will appear on your calendar, even if it wasn't planned.
+            ✓ Strava connected.
           </div>
         )}
         {stravaStatus === "error" && (

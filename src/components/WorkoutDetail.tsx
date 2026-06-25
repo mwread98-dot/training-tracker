@@ -12,16 +12,13 @@ type Props = {
 
 function fmtDuration(totalMin: number | null | undefined) {
   if (!totalMin || totalMin <= 0) return null;
-
   const totalSeconds = Math.round(totalMin * 60);
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
-
   if (hours > 0) {
     return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
   }
-
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
@@ -29,20 +26,10 @@ function PlannedRow({ label, value }: { label: string; value?: string | number |
   if (value === null || value === undefined || value === "") {
     return null;
   }
-
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "140px minmax(0, 1fr)",
-        gap: 12,
-        padding: "8px 0",
-        borderTop: "1px solid var(--border)",
-        fontSize: 14,
-      }}
-    >
-      <strong>{label}</strong>
-      <span>{value}</span>
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 8 }}>
+      <span style={{ color: "var(--text-muted)" }}>{label}</span>
+      <strong>{value}</strong>
     </div>
   );
 }
@@ -52,9 +39,7 @@ function statText(label: string, value: string | null | undefined) {
 }
 
 function CompletedActivityCard({ workout }: { workout: Workout }) {
-  const source =
-    (workout.source as string | null | undefined) ??
-    (workout.stravaActivityId ? "strava" : "coach");
+  const source = (workout.source as string | null | undefined) ?? (workout.stravaActivityId ? "strava" : "coach");
 
   // Strava metadata is intentionally separate from the coach-planned title and
   // description. If a planned workout was matched with a Strava activity, this
@@ -62,7 +47,6 @@ function CompletedActivityCard({ workout }: { workout: Workout }) {
   // the Planned tab.
   const stravaTitle = workout.stravaTitle?.trim() || workout.title;
   const stravaDescription = workout.stravaDescription?.trim();
-
   const stats = [
     statText("Distance", workout.actualDistanceKm ? `${workout.actualDistanceKm.toFixed(2)} km` : null),
     statText("Moving", fmtDuration(workout.actualDurationMin)),
@@ -104,14 +88,7 @@ function CompletedActivityCard({ workout }: { workout: Workout }) {
       </div>
 
       {stravaDescription && (
-        <p
-          style={{
-            marginTop: 0,
-            marginBottom: 10,
-            whiteSpace: "pre-wrap",
-            fontSize: 14,
-          }}
-        >
+        <p style={{ marginTop: 0, marginBottom: 10, whiteSpace: "pre-wrap", fontSize: 14 }}>
           {stravaDescription}
         </p>
       )}
@@ -151,9 +128,7 @@ export default function WorkoutDetail({
     (workout.source !== "strava" && workout.title)
   );
 
-  const source =
-    (workout.source as string | null | undefined) ??
-    (workout.stravaActivityId ? "strava" : "coach");
+  const source = (workout.source as string | null | undefined) ?? (workout.stravaActivityId ? "strava" : "coach");
   const completionManagedByStrava = !!workout.stravaActivityId;
   const hasCompletedActivities = completedActivitiesOnDate.length > 0;
 
@@ -174,11 +149,18 @@ export default function WorkoutDetail({
     return "Planned workout";
   }, [source, hasPlanned]);
 
+  function handleSave() {
+    onSave({
+      completed: completionManagedByStrava ? true : completed,
+      athleteNotes: athleteNotes || undefined,
+    });
+  }
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2 style={{ marginBottom: 4 }}>{workout.title}</h2>
-        <p style={{ color: "var(--text-muted)", fontSize: 14, marginBottom: 16 }}>
+        <h3 style={{ marginBottom: 6 }}>{workout.title}</h3>
+        <p style={{ color: "var(--text-muted)", fontSize: 14, marginTop: 0, marginBottom: 16 }}>
           {workout.date}
           {workout.type && ` · ${workout.type.replace("_", " ")}`}
           {workout.intensity && ` · ${workout.intensity.replace("_", " ")}`}
@@ -214,87 +196,79 @@ export default function WorkoutDetail({
         {activeTab === "completed" && hasCompletedActivities ? (
           <div>
             <p style={{ fontSize: 14, color: "var(--text-muted)", marginTop: 0, marginBottom: 16 }}>
-              Completed activities recorded on {workout.date}. Switch back to Planned to review the original session and add your notes.
+              Completed activities recorded on {workout.date}. Your notes now appear directly below the synced activity data.
             </p>
+
             {completedActivitiesOnDate.map((activity) => (
               <CompletedActivityCard key={activity.entryId} workout={activity} />
             ))}
+
+            <div className="field" style={{ marginTop: 16 }}>
+              <label>Your notes (how it felt, conditions, etc.)</label>
+              <textarea
+                value={athleteNotes}
+                onChange={(e) => setAthleteNotes(e.target.value)}
+                placeholder="How did it feel? Any weather, terrain, fatigue, or niggles to mention?"
+              />
+            </div>
+
+            {athleteNotes && (
+              <p style={{ fontSize: 14, color: "var(--text-muted)", marginTop: 8, marginBottom: 0 }}>
+                Saved here so your coach can see it on their completed view.
+              </p>
+            )}
+
             <div className="modal-actions">
               <div />
               <div style={{ display: "flex", gap: 8 }}>
                 <button type="button" className="btn" onClick={onClose}>
                   Close
+                </button>
+                <button type="button" className="btn btn-primary" onClick={handleSave}>
+                  Save notes
                 </button>
               </div>
             </div>
           </div>
         ) : (
           <>
-            <span
-              style={{
-                display: "inline-block",
-                padding: "4px 8px",
-                borderRadius: 999,
-                background: "var(--accent-soft)",
-                color: "var(--accent-dark)",
-                fontSize: 12,
-                fontWeight: 700,
-                marginBottom: 10,
-              }}
-            >
-              {sourceLabel}
-            </span>
+            <h4 style={{ marginTop: 0 }}>{sourceLabel}</h4>
 
             {hasPlanned ? (
-              <div
-                style={{
-                  border: "1px solid var(--border)",
-                  borderRadius: 12,
-                  padding: "12px 14px",
-                  marginBottom: 16,
-                }}
-              >
+              <div style={{ marginBottom: 18 }}>
                 {workout.description && (
-                  <p style={{ marginTop: 0, marginBottom: 12 }}>{workout.description}</p>
+                  <div style={{ marginBottom: 14 }}>
+                    <p style={{ marginTop: 0, whiteSpace: "pre-wrap" }}>{workout.description}</p>
+                  </div>
                 )}
-                <PlannedRow
-                  label="Distance"
-                  value={workout.distanceKm ? `${workout.distanceKm.toFixed(1)} km` : null}
-                />
+
+                <PlannedRow label="Distance" value={workout.distanceKm ? `${workout.distanceKm} km` : null} />
                 <PlannedRow label="Duration" value={fmtDuration(workout.durationMin)} />
                 <PlannedRow label="Target pace" value={workout.targetPace} />
                 <PlannedRow label="Coach notes" value={workout.coachNotes} />
               </div>
             ) : (
-              <div
-                style={{
-                  border: "1px solid var(--border)",
-                  borderRadius: 12,
-                  padding: "12px 14px",
-                  marginBottom: 16,
-                  color: "var(--text-muted)",
-                }}
-              >
+              <p style={{ color: "var(--text-muted)" }}>
                 Nothing was planned for this day. Any synced activity details will appear under the Completed tab.
-              </div>
+              </p>
             )}
 
-            <div className="field">
-              <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <input
-                  type="checkbox"
-                  checked={completed}
-                  disabled={completionManagedByStrava}
-                  onChange={(e) => setCompleted(e.target.checked)}
-                />
-                {completionManagedByStrava ? "Completed (synced from Strava)" : "Mark as completed"}
-              </label>
-            </div>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+              <input
+                type="checkbox"
+                checked={completionManagedByStrava ? true : completed}
+                onChange={(e) => setCompleted(e.target.checked)}
+                disabled={completionManagedByStrava}
+              />
+              {completionManagedByStrava ? "Completed (synced from Strava)" : "Mark as completed"}
+            </label>
 
-            <div className="field">
-              <label>Your notes (how it felt, conditions, etc.)</label>
-              <textarea value={athleteNotes} onChange={(e) => setAthleteNotes(e.target.value)} />
-            </div>
+            {!hasCompletedActivities && (
+              <div className="field">
+                <label>Your notes (how it felt, conditions, etc.)</label>
+                <textarea value={athleteNotes} onChange={(e) => setAthleteNotes(e.target.value)} />
+              </div>
+            )}
 
             <div className="modal-actions">
               <div />
@@ -302,11 +276,7 @@ export default function WorkoutDetail({
                 <button type="button" className="btn" onClick={onClose}>
                   Close
                 </button>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={() => onSave({ completed: completionManagedByStrava ? true : completed, athleteNotes })}
-                >
+                <button type="button" className="btn btn-primary" onClick={handleSave}>
                   Save
                 </button>
               </div>
