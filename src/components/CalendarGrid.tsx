@@ -474,10 +474,7 @@ export default function CalendarGrid({
           }}
         >
           <div>
-            <h3 style={{ marginBottom: 4 }}>Weekly planned vs expected/completed</h3>
-            <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)" }}>
-              Showing the past 12 weeks and next 6 weeks.
-            </p>
+            <h3 style={{ marginBottom: 4 }}>Progress</h3>
           </div>
           <MetricToggle value={chartMetric} onChange={setChartMetric} />
         </div>
