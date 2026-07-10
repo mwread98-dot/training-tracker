@@ -245,32 +245,39 @@ input, select, textarea {
 }
 
 .workout-chip {
-  font-size: 11px;
-  border-radius: 5px;
-  padding: 3px 6px;
-  background: var(--accent-soft);
-  color: var(--accent-dark);
-  font-weight: 500;
+  font-size: 13px;
+  line-height: 1.25;
+  border-radius: 6px;
+  padding: 4px 7px;
+  background: #fef3c7;
+  color: #78350f;
+  font-weight: 600;
   text-align: left;
-  border: none;
+  border: 1px solid #f59e0b;
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  text-decoration: none;
 }
 
 .workout-chip.hard {
   background: var(--warn-soft);
+  border-color: var(--warn);
   color: #8a4422;
 }
 
 .workout-chip.completed {
-  opacity: 0.55;
-  text-decoration: line-through;
+  background: #dbeafe;
+  border-color: #2563eb;
+  color: #1e3a8a;
+  opacity: 1;
+  text-decoration: none;
 }
 
 .workout-chip.rest {
   background: #f1efe8;
+  border-color: var(--border);
   color: var(--text-muted);
 }
 
@@ -467,7 +474,8 @@ input, select, textarea {
     font-size: 11px;
   }
   .workout-chip {
-    font-size: 10px;
+    font-size: 12px;
+    padding: 3px 5px;
   }
   .row {
     flex-direction: column;
