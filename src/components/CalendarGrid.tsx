@@ -532,7 +532,7 @@ export default function CalendarGrid({
             Planned
           </span>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <span style={{ width: 10, height: 10, borderRadius: 999, background: "#fc4c02", display: "inline-block" }} />
+            <span style={{ width: 10, height: 10, borderRadius: 999, background: "#3002fc", display: "inline-block" }} />
             Actual
           </span>
         </div>
@@ -580,7 +580,7 @@ export default function CalendarGrid({
               <path
                 d={linePath(actualSeries)}
                 fill="none"
-                stroke="#fc4c02"
+                stroke="#3002fc"
                 strokeWidth={4}
                 strokeLinejoin="round"
                 strokeLinecap="round"
@@ -590,7 +590,7 @@ export default function CalendarGrid({
               <path
                 d={linePath(plannedSeries)}
                 fill="none"
-                stroke="#fc4c02"
+                stroke="#3002fc"
                 strokeWidth={4}
                 strokeLinejoin="round"
                 strokeLinecap="round"
@@ -606,7 +606,7 @@ export default function CalendarGrid({
                   x2={chartX(currentPointIndex)}
                   y1={chartTop}
                   y2={chartBaselineY}
-                  stroke="#fc4c02"
+                  stroke="#3002fc"
                   strokeWidth={3}
                   opacity={0.9}
                 />
@@ -632,7 +632,7 @@ export default function CalendarGrid({
                     cy={y}
                     r={point.isCurrentWeek ? 7 : 5}
                     fill={point.isFutureWeek ? "var(--surface)" : "#fff"}
-                    stroke="#fc4c02"
+                    stroke="#3002fc"
                     strokeWidth={4}
                   >
                     <title>{`${modeLabel}: ${valueLabel} · week starting ${point.label}`}</title>
@@ -644,7 +644,7 @@ export default function CalendarGrid({
                       textAnchor="middle"
                       fontSize={12}
                       fontWeight={point.isCurrentWeek ? 700 : 500}
-                      fill={point.isCurrentWeek ? "#fc4c02" : "var(--text-muted)"}
+                      fill={point.isCurrentWeek ? "#3002fc" : "var(--text-muted)"}
                     >
                       {point.isCurrentWeek ? "Current" : MONTH_SHORT[parseIso(point.weekStartIso).getMonth()].toUpperCase()}
                     </text>
