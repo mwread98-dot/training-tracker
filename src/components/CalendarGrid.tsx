@@ -148,10 +148,23 @@ function runDistanceLabel(workout: CalendarWorkout) {
   return `${distance.toFixed(1)} km`;
 }
 
+function workoutTitleLabel(w: CalendarWorkout) {
+  if (w.source === "strava") return `🏃 ${w.title}`;
+  if (w.hasActualStats) return `✓ ${w.title}`;
+  return w.title;
+}
+
+function workoutTitleFontSize(title: string) {
+  if (title.length > 34) return 10;
+  if (title.length > 26) return 11;
+  if (title.length > 18) return 12;
+  return 13;
+}
+
 function chipLabel(w: CalendarWorkout) {
-  const prefix = w.source === "strava" ? "🏃 " : w.hasActualStats ? "✓ " : "";
+  const title = workoutTitleLabel(w);
   const distance = runDistanceLabel(w);
-  return `${prefix}${w.title}${distance ? ` · ${distance}` : ""}`;
+  return `${title}${distance ? ` · ${distance}` : ""}`;
 }
 
 function formatDuration(totalMin: number) {
@@ -496,7 +509,15 @@ export default function CalendarGrid({
                       }}
                       title={chipLabel(w)}
                     >
-                      {chipLabel(w)}
+                      <span
+                        className="workout-chip-title"
+                        style={{ fontSize: workoutTitleFontSize(workoutTitleLabel(w)) }}
+                      >
+                        {workoutTitleLabel(w)}
+                      </span>
+                      {runDistanceLabel(w) && (
+                        <span className="workout-chip-distance">{runDistanceLabel(w)}</span>
+                      )}
                     </button>
                   ))}
                 </div>

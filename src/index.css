@@ -215,7 +215,8 @@ input, select, textarea {
 }
 
 .calendar-day {
-  min-height: 92px;
+  height: 112px;
+  min-height: 112px;
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 6px;
@@ -223,6 +224,7 @@ input, select, textarea {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  overflow: hidden;
 }
 
 .calendar-day.outside {
@@ -245,8 +247,8 @@ input, select, textarea {
 }
 
 .workout-chip {
-  font-size: 13px;
-  line-height: 1.25;
+  width: 100%;
+  min-width: 0;
   border-radius: 6px;
   padding: 4px 7px;
   background: #fef3c7;
@@ -255,10 +257,29 @@ input, select, textarea {
   text-align: left;
   border: 1px solid #f59e0b;
   cursor: pointer;
+  overflow: hidden;
+  text-decoration: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+}
+
+.workout-chip-title {
+  display: block;
+  width: 100%;
+  line-height: 1.15;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  text-decoration: none;
+}
+
+.workout-chip-distance {
+  display: block;
+  font-size: 11px;
+  line-height: 1.1;
+  font-weight: 700;
+  opacity: 0.85;
 }
 
 .workout-chip.hard {
@@ -268,9 +289,9 @@ input, select, textarea {
 }
 
 .workout-chip.completed {
-  background: #dbeafe;
-  border-color: #11861d;
-  color: #2f8637;
+  background: #dcfce7;
+  border-color: #16a34a;
+  color: #14532d;
   opacity: 1;
   text-decoration: none;
 }
@@ -462,7 +483,8 @@ input, select, textarea {
     grid-template-columns: repeat(7, 1fr) 64px;
   }
   .calendar-day {
-    min-height: 64px;
+    height: 76px;
+    min-height: 76px;
     padding: 4px;
   }
   .week-total {
@@ -474,8 +496,11 @@ input, select, textarea {
     font-size: 11px;
   }
   .workout-chip {
-    font-size: 12px;
     padding: 3px 5px;
+  }
+
+  .workout-chip-distance {
+    font-size: 10px;
   }
   .row {
     flex-direction: column;
