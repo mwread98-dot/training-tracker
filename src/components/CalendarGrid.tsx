@@ -131,10 +131,27 @@ function chipClass(w: CalendarWorkout) {
   return "workout-chip";
 }
 
+function isRunWorkout(workout: CalendarWorkout) {
+  const type = workout.type?.toLowerCase() ?? "";
+  const title = workout.title.toLowerCase();
+  return type.includes("run") || title.includes("run");
+}
+
+function runDistanceLabel(workout: CalendarWorkout) {
+  if (!isRunWorkout(workout)) return null;
+
+  const distance = isWorkoutCompleted(workout)
+    ? workout.actualDistanceKm ?? workout.distanceKm
+    : workout.distanceKm;
+
+  if (!distance || distance <= 0) return null;
+  return `${distance.toFixed(1)} km`;
+}
+
 function chipLabel(w: CalendarWorkout) {
-  if (w.source === "strava") return `🏃 ${w.title}`;
-  if (w.hasActualStats) return `✓ ${w.title}`;
-  return w.title;
+  const prefix = w.source === "strava" ? "🏃 " : w.hasActualStats ? "✓ " : "";
+  const distance = runDistanceLabel(w);
+  return `${prefix}${w.title}${distance ? ` · ${distance}` : ""}`;
 }
 
 function formatDuration(totalMin: number) {
@@ -477,7 +494,7 @@ export default function CalendarGrid({
                         e.stopPropagation();
                         onWorkoutClick?.(w);
                       }}
-                      title={w.title}
+                      title={chipLabel(w)}
                     >
                       {chipLabel(w)}
                     </button>
