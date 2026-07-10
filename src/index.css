@@ -269,8 +269,8 @@ input, select, textarea {
 
 .workout-chip.completed {
   background: #dbeafe;
-  border-color: #2563eb;
-  color: #1e3a8a;
+  border-color: #11861d;
+  color: #2f8637;
   opacity: 1;
   text-decoration: none;
 }
