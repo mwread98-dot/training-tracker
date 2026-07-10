@@ -149,9 +149,7 @@ function runDistanceLabel(workout: CalendarWorkout) {
 }
 
 function workoutTitleLabel(w: CalendarWorkout) {
-  if (w.source === "strava") return `🏃 ${w.title}`;
-  if (w.hasActualStats) return `✓ ${w.title}`;
-  return w.title;
+ return `${w.title}`;
 }
 
 function workoutTitleFontSize(title: string) {
