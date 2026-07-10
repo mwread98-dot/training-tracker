@@ -449,7 +449,7 @@ export default function CalendarGrid({
 
                 <div>
                   <strong style={{ display: "block", marginBottom: 2 }}>
-                    {totals.isPastWeek ? "Completed" : "Expected / completed"}
+                    {totals.isPastWeek ? "Completed" : "Actual"}
                   </strong>
                   <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
                     {totals.expectedKm > 0 ? `${totals.expectedKm.toFixed(1)} km` : "—"}
@@ -460,10 +460,6 @@ export default function CalendarGrid({
             </Fragment>
           );
         })}
-      </div>
-
-      <div style={{ marginTop: 12, fontSize: 13, color: "var(--text-muted)" }}>
-        Planned totals use the weekly prescription. Expected / completed totals use completed activity data for past days and planned load for the remaining days of the week, including today when nothing has been completed yet.
       </div>
 
       <div style={{ marginTop: 24, borderTop: "1px solid var(--border)", paddingTop: 18 }}>
@@ -493,7 +489,7 @@ export default function CalendarGrid({
           </span>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
             <span style={{ width: 10, height: 10, borderRadius: 999, background: "#2563eb", display: "inline-block" }} />
-            Expected / completed
+            Actual
           </span>
         </div>
 
@@ -540,7 +536,7 @@ export default function CalendarGrid({
                         }}
                       />
                       <div
-                        title={`Expected / completed: ${expectedLabel}`}
+                        title={`Actual: ${expectedLabel}`}
                         style={{
                           width: 14,
                           height: expected > 0 ? expectedHeight : 2,
