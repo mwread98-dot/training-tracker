@@ -246,16 +246,15 @@ input, select, textarea {
   color: var(--text-muted);
 }
 
+/* ── Base Workout Chip ── */
 .workout-chip {
   width: 100%;
   min-width: 0;
   border-radius: 6px;
   padding: 4px 7px;
-  background: #fef3c7;
-  color: #78350f;
   font-weight: 600;
   text-align: left;
-  border: 1px solid #f59e0b;
+  border: 1px solid transparent;
   cursor: pointer;
   overflow: hidden;
   text-decoration: none;
@@ -263,6 +262,12 @@ input, select, textarea {
   flex-direction: column;
   align-items: flex-start;
   gap: 1px;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+.workout-chip:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 .workout-chip-title {
@@ -282,26 +287,102 @@ input, select, textarea {
   opacity: 0.85;
 }
 
-.workout-chip.hard {
-  background: var(--warn-soft);
-  border-color: var(--warn);
-  color: #8a4422;
+/* ── Intensity Theme Definitions (Future Workouts) ── */
+
+/* Easy: Soft Slate Blue */
+.workout-chip.intensity-easy {
+  background-color: #f0f6fc;
+  border-color: #bcd1e6;
+  color: #1e3a5f;
 }
 
+/* Marathon Pace: Soft Emerald Mint */
+.workout-chip.intensity-marathon_pace {
+  background-color: #eefdf7;
+  border-color: #bbf2d7;
+  color: #0f5132;
+}
+
+/* Threshold: Soft Amber Gold */
+.workout-chip.intensity-threshold {
+  background-color: #fef8ec;
+  border-color: #fce1b4;
+  color: #825302;
+}
+
+/* VO2 Max: Soft Orchid Pink */
+.workout-chip.intensity-vo2_max {
+  background-color: #fdf2f8;
+  border-color: #fbcfe8;
+  color: #9d174d;
+}
+
+/* Speed Work: Soft Coral Red */
+.workout-chip.intensity-speed_work {
+  background-color: #fff5f5;
+  border-color: #febca8;
+  color: #9b1c1c;
+}
+
+/* ── Completed Workouts (Green Base + Colored Intensity Stripes) ── */
 .workout-chip.completed {
-  background: #dcfce7;
-  border-color: #16a34a;
-  color: #14532d;
-  opacity: 1;
+  background-color: #dcfce7 !important;
+  border-color: #16a34a !important;
+  color: #14532d !important;
   text-decoration: none;
 }
 
-.workout-chip.rest {
-  background: #f1efe8;
-  border-color: var(--border);
-  color: var(--text-muted);
+.workout-chip.completed.intensity-easy {
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 8px,
+    rgba(30, 58, 95, 0.09) 8px,
+    rgba(30, 58, 95, 0.09) 16px
+  );
 }
 
+.workout-chip.completed.intensity-marathon_pace {
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 8px,
+    rgba(15, 81, 50, 0.09) 8px,
+    rgba(15, 81, 50, 0.09) 16px
+  );
+}
+
+.workout-chip.completed.intensity-threshold {
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 8px,
+    rgba(130, 83, 2, 0.09) 8px,
+    rgba(130, 83, 2, 0.09) 16px
+  );
+}
+
+.workout-chip.completed.intensity-vo2_max {
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 8px,
+    rgba(157, 23, 77, 0.09) 8px,
+    rgba(157, 23, 77, 0.09) 16px
+  );
+}
+
+.workout-chip.completed.intensity-speed_work {
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 8px,
+    rgba(155, 28, 28, 0.09) 8px,
+    rgba(155, 28, 28, 0.09) 16px
+  );
+}
+
+/* ── Athlete Profile Layout and Rest ── */
 .athlete-list {
   display: flex;
   flex-direction: column;

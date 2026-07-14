@@ -128,13 +128,27 @@ function completedDuration(workout: CalendarWorkout) {
   return workout.actualDurationMin ?? workout.durationMin ?? 0;
 }
 
+// Gracefully normalizes legacy intensities to the newly supported set
+function getIntensityClass(intensity?: string | null) {
+  const normalized = (intensity ?? "easy").toLowerCase();
+  if (normalized === "hard" || normalized === "speed_work") return "speed_work";
+  if (normalized === "race_pace" || normalized === "marathon_pace") return "marathon_pace";
+  if (normalized === "moderate" || normalized === "threshold") return "threshold";
+  if (normalized === "vo2_max") return "vo2_max";
+  return "easy";
+}
+
 function chipClass(w: CalendarWorkout) {
-  if (w.source === "strava") return "workout-chip completed";
-  if (w.completed && w.hasActualStats) return "workout-chip completed";
-  if (w.completed) return "workout-chip completed";
-  if (w.type === "rest") return "workout-chip rest";
-  if (w.intensity === "hard" || w.intensity === "race_pace") return "workout-chip hard";
-  return "workout-chip";
+  const classes = ["workout-chip"];
+  
+  if (isWorkoutCompleted(w)) {
+    classes.push("completed");
+  }
+
+  const intensity = getIntensityClass(w.intensity);
+  classes.push(`intensity-${intensity}`);
+
+  return classes.join(" ");
 }
 
 function runDistanceLabel(workout: CalendarWorkout) {
@@ -426,9 +440,21 @@ export default function CalendarGrid({
   }, [byDate, currentWeekStart, todayIso]);
 
   const monthDuration = formatDuration(monthTotal.min);
+  
   const chartVisiblePoints = chartPoints.map((point) => {
     const isFutureWeek = point.weekStartIso > currentWeekStartIso;
-    const value = metricValue(point, chartMetric, isFutureWeek ? "planned" : "actual");
+    const isCurrentWeek = point.weekStartIso === currentWeekStartIso;
+
+    let key: "planned" | "actual" | "expected";
+    if (isFutureWeek) {
+      key = "planned";
+    } else if (isCurrentWeek) {
+      key = "expected";
+    } else {
+      key = "actual";
+    }
+
+    const value = metricValue(point, chartMetric, key);
     return { ...point, isFutureWeek, value };
   });
 
@@ -665,7 +691,13 @@ export default function CalendarGrid({
 
             {chartVisiblePoints.map((point, index) => {
               const valueLabel = formatChartValue(point.value);
-              const modeLabel = point.isFutureWeek ? "Planned" : "Actual";
+              
+              const modeLabel = point.isCurrentWeek 
+                ? "Projected" 
+                : point.isFutureWeek 
+                  ? "Planned" 
+                  : "Actual";
+
               const x = chartX(index);
               const y = chartY(point.value);
               const showLabel = index === 0 || point.isCurrentWeek || index === chartVisiblePoints.length - 1 || parseIso(point.weekStartIso).getDate() <= 7;

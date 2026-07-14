@@ -14,8 +14,8 @@ type Props = {
   onClose: () => void;
 };
 
-const TYPES = ["run", "bike", "swim", "strength", "cross_train", "rest", "race"];
-const INTENSITIES = ["easy", "moderate", "hard", "race_pace"];
+const TYPES = ["run", "cross_train", "strength"];
+const INTENSITIES = ["easy", "marathon_pace", "threshold", "vo2_max", "speed_work"];
 
 type FieldConfig = {
   distance: boolean;
@@ -26,12 +26,8 @@ type FieldConfig = {
 
 const FIELD_CONFIG: Record<string, FieldConfig> = {
   run: { distance: true, duration: true, pace: true, intensity: true },
-  bike: { distance: true, duration: true, pace: true, intensity: true },
-  swim: { distance: true, duration: true, pace: true, intensity: true },
-  race: { distance: true, duration: true, pace: true, intensity: true },
   strength: { distance: false, duration: true, pace: false, intensity: true },
   cross_train: { distance: false, duration: true, pace: false, intensity: true },
-  rest: { distance: false, duration: false, pace: false, intensity: false },
 };
 
 function fmtDuration(totalMin: number | null | undefined) {
@@ -48,6 +44,14 @@ function fmtDuration(totalMin: number | null | undefined) {
 
 function statText(label: string, value: string | null | undefined) {
   return value ? `${label}: ${value}` : null;
+}
+
+function formatIntensityLabel(intensity: string) {
+  if (intensity === "vo2_max") return "VO2 Max";
+  return intensity
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
 }
 
 function CompletedActivityCard({ workout }: { workout: Workout }) {
@@ -76,7 +80,7 @@ function CompletedActivityCard({ workout }: { workout: Workout }) {
           <strong style={{ display: "block", marginBottom: 2 }}>{stravaTitle}</strong>
           <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
             {(workout.type ?? "session").replace("_", " ")}
-            {workout.intensity && ` · ${workout.intensity.replace("_", " ")}`}
+            {workout.intensity && ` · ${formatIntensityLabel(workout.intensity)}`}
           </span>
         </div>
         <span
@@ -124,9 +128,13 @@ export default function WorkoutForm({
   const source = (existing?.source as string | null | undefined) ?? (existing?.stravaActivityId ? "strava" : "coach");
   const isStravaAutoCreated = source === "strava";
 
+  // Gracefully fallback legacy types or intensities so the UI doesn't crash
+  const initialType = existing?.type && TYPES.includes(existing.type) ? existing.type : "run";
+  const initialIntensity = existing?.intensity && INTENSITIES.includes(existing.intensity) ? existing.intensity : "easy";
+
   const [date, setDate] = useState(existing?.date ?? defaultDate);
-  const [type, setType] = useState<string>(existing?.type ?? "run");
-  const [intensity, setIntensity] = useState<string>(existing?.intensity ?? "easy");
+  const [type, setType] = useState<string>(initialType);
+  const [intensity, setIntensity] = useState<string>(initialIntensity);
   const [title, setTitle] = useState(existing?.title ?? "");
   const [description, setDescription] = useState(isStravaAutoCreated ? "" : existing?.description ?? "");
   const [distanceKm, setDistanceKm] = useState(isStravaAutoCreated ? "" : existing?.distanceKm?.toString() ?? "");
@@ -151,9 +159,6 @@ export default function WorkoutForm({
 
   function handleTypeChange(newType: string) {
     setType(newType);
-    if (newType === "rest" && !title.trim()) {
-      setTitle("Rest day");
-    }
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -265,25 +270,19 @@ export default function WorkoutForm({
               <input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder={type === "rest" ? "e.g. Rest day" : "e.g. 8mi easy + strides"}
+                placeholder="e.g. 8mi Easy + Strides or 3x1mi Threshold"
                 required
               />
             </div>
 
-            {type === "rest" ? (
-              <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 14 }}>
-                No distance, duration, or pace needed for a rest day. Add a note below only if there's something specific.
-              </p>
-            ) : (
-              <div className="field">
-                <label>Description for athlete</label>
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Warm up, main set, cool down…"
-                />
-              </div>
-            )}
+            <div className="field">
+              <label>Description for athlete</label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Warm up, main set, cool down…"
+              />
+            </div>
 
             {(cfg.distance || cfg.duration) && (
               <div className="row">
@@ -320,23 +319,12 @@ export default function WorkoutForm({
                     <select value={intensity ?? "easy"} onChange={(e) => setIntensity(e.target.value)}>
                       {INTENSITIES.map((i) => (
                         <option key={i} value={i}>
-                          {i.replace("_", " ")}
+                          {formatIntensityLabel(i)}
                         </option>
                       ))}
                     </select>
                   </div>
                 )}
-              </div>
-            )}
-
-            {type === "rest" && (
-              <div className="field">
-                <label>Note (optional)</label>
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="e.g. Full rest, or light stretching/mobility"
-                />
               </div>
             )}
 
