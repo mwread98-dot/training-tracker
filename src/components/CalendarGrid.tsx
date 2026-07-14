@@ -1,3 +1,6 @@
+Here is the rewritten code incorporating your requests. The helper functions calculating distance and duration have been updated to strictly gate for running workouts, ensuring all metrics across the component only reflect run data. The week totals side column has been simplified into a single block that calculates the appropriate metric ("Completed", "Projected", or "Planned") depending on whether the week is in the past, current, or future.
+
+```tsx
 import { Fragment, useMemo, useState } from "react";
 
 export type CalendarWorkout = {
@@ -43,11 +46,9 @@ const MONTH_NAMES = [
 const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 type WeekTotals = {
-  plannedKm: number;
-  plannedMin: number;
-  expectedKm: number;
-  expectedMin: number;
-  isPastWeek: boolean;
+  label: "Completed" | "Projected" | "Planned";
+  km: number;
+  min: number;
 };
 
 type ChartMetric = "km" | "time";
@@ -104,21 +105,29 @@ function isWorkoutCompleted(workout: CalendarWorkout) {
   );
 }
 
+function isRunWorkout(workout: CalendarWorkout) {
+  const type = workout.type?.toLowerCase() ?? "";
+  const title = workout.title.toLowerCase();
+  return type.includes("run") || title.includes("run");
+}
+
 function plannedDistance(workout: CalendarWorkout) {
+  if (!isRunWorkout(workout)) return 0;
   return workout.distanceKm ?? 0;
 }
 
 function plannedDuration(workout: CalendarWorkout) {
+  if (!isRunWorkout(workout)) return 0;
   return workout.durationMin ?? 0;
 }
 
 function completedDistance(workout: CalendarWorkout) {
-  if (!isWorkoutCompleted(workout)) return 0;
+  if (!isRunWorkout(workout) || !isWorkoutCompleted(workout)) return 0;
   return workout.actualDistanceKm ?? workout.distanceKm ?? 0;
 }
 
 function completedDuration(workout: CalendarWorkout) {
-  if (!isWorkoutCompleted(workout)) return 0;
+  if (!isRunWorkout(workout) || !isWorkoutCompleted(workout)) return 0;
   return workout.actualDurationMin ?? workout.durationMin ?? 0;
 }
 
@@ -129,12 +138,6 @@ function chipClass(w: CalendarWorkout) {
   if (w.type === "rest") return "workout-chip rest";
   if (w.intensity === "hard" || w.intensity === "race_pace") return "workout-chip hard";
   return "workout-chip";
-}
-
-function isRunWorkout(workout: CalendarWorkout) {
-  const type = workout.type?.toLowerCase() ?? "";
-  const title = workout.title.toLowerCase();
-  return type.includes("run") || title.includes("run");
 }
 
 function runDistanceLabel(workout: CalendarWorkout) {
@@ -328,31 +331,51 @@ export default function CalendarGrid({
     const totals: WeekTotals[] = [];
 
     for (let i = 0; i < cells.length; i += 7) {
-      let plannedKm = 0;
-      let plannedMin = 0;
-      let expectedKm = 0;
-      let expectedMin = 0;
-      const weekEndIso = cells[i + 6].iso;
+      let km = 0;
+      let min = 0;
+      const weekStartIso = cells[i].iso;
+      let label: "Completed" | "Projected" | "Planned";
 
-      for (let j = i; j < i + 7; j++) {
-        const dayTotals = getDayTotals(cells[j].iso);
-        plannedKm += dayTotals.plannedKm;
-        plannedMin += dayTotals.plannedMin;
-        expectedKm += dayTotals.expectedKm;
-        expectedMin += dayTotals.expectedMin;
+      if (weekStartIso < currentWeekStartIso) {
+        label = "Completed";
+        for (let j = i; j < i + 7; j++) {
+          const dayWorkouts = byDate[cells[j].iso] ?? [];
+          for (const w of dayWorkouts) {
+            km += completedDistance(w);
+            min += completedDuration(w);
+          }
+        }
+      } else if (weekStartIso > currentWeekStartIso) {
+        label = "Planned";
+        for (let j = i; j < i + 7; j++) {
+          const dayWorkouts = byDate[cells[j].iso] ?? [];
+          for (const w of dayWorkouts) {
+            km += plannedDistance(w);
+            min += plannedDuration(w);
+          }
+        }
+      } else {
+        label = "Projected";
+        for (let j = i; j < i + 7; j++) {
+          const dayIso = cells[j].iso;
+          const dayWorkouts = byDate[dayIso] ?? [];
+          for (const w of dayWorkouts) {
+            if (dayIso < todayIso || isWorkoutCompleted(w)) {
+              km += completedDistance(w);
+              min += completedDuration(w);
+            } else {
+              km += plannedDistance(w);
+              min += plannedDuration(w);
+            }
+          }
+        }
       }
 
-      totals.push({
-        plannedKm,
-        plannedMin,
-        expectedKm,
-        expectedMin,
-        isPastWeek: weekEndIso < todayIso,
-      });
+      totals.push({ label, km, min });
     }
 
     return totals;
-  }, [cells, byDate, todayIso]);
+  }, [cells, byDate, currentWeekStartIso, todayIso]);
 
   const monthTotal = useMemo(() => {
     const prefix = `${year}-${String(month + 1).padStart(2, "0")}`;
@@ -465,7 +488,6 @@ export default function CalendarGrid({
               {monthTotal.km > 0 && `${monthTotal.km.toFixed(1)} km`}
               {monthTotal.km > 0 && monthDuration && " · "}
               {monthDuration && monthDuration}
-              {" total for this month view"}
             </p>
           )}
         </div>
@@ -484,8 +506,7 @@ export default function CalendarGrid({
 
         {Array.from({ length: cells.length / 7 }).map((_, weekIdx) => {
           const totals = weekTotals[weekIdx];
-          const plannedDuration = formatDuration(totals.plannedMin);
-          const expectedDuration = formatDuration(totals.expectedMin);
+          const formattedDuration = formatDuration(totals.min);
 
           return (
             <Fragment key={weekIdx}>
@@ -521,23 +542,13 @@ export default function CalendarGrid({
                 </div>
               ))}
 
-              <div className="week-total" style={{ alignItems: "flex-start", gap: 8 }}>
+              <div className="week-total" style={{ alignItems: "flex-start", gap: 8, display: "flex", flexDirection: "column", justifyContent: "center" }}>
                 <div>
-                  <strong style={{ display: "block", marginBottom: 2 }}>Planned</strong>
+                  <strong style={{ display: "block", marginBottom: 2 }}>{totals.label}</strong>
                   <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-                    {totals.plannedKm > 0 ? `${totals.plannedKm.toFixed(1)} km` : "—"}
+                    {totals.km > 0 ? `${totals.km.toFixed(1)} km` : "—"}
                   </div>
-                  <div style={{ fontSize: 13, color: "var(--text-muted)" }}>{plannedDuration ?? "—"}</div>
-                </div>
-
-                <div>
-                  <strong style={{ display: "block", marginBottom: 2 }}>
-                    {totals.isPastWeek ? "Completed" : "Actual"}
-                  </strong>
-                  <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-                    {totals.expectedKm > 0 ? `${totals.expectedKm.toFixed(1)} km` : "—"}
-                  </div>
-                  <div style={{ fontSize: 13, color: "var(--text-muted)" }}>{expectedDuration ?? "—"}</div>
+                  <div style={{ fontSize: 13, color: "var(--text-muted)" }}>{formattedDuration ?? "—"}</div>
                 </div>
               </div>
             </Fragment>
@@ -694,3 +705,5 @@ export default function CalendarGrid({
     </div>
   );
 }
+
+```
