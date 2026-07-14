@@ -24,14 +24,11 @@ const schema = a
         date: a.date().required(),
         type: a.enum([
           "run",
-          "bike",
-          "swim",
           "strength",
           "cross_train",
-          "rest",
-          "race",
         ]),
-        intensity: a.enum(["easy", "moderate", "hard", "race_pace"]),
+        // Changed to a string to prevent strict enum mismatches with frontend forms
+        intensity: a.string(), 
         title: a.string().required(),
         description: a.string(),
         distanceKm: a.float(),
