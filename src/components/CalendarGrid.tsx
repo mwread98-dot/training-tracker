@@ -1,6 +1,3 @@
-Here is the rewritten code incorporating your requests. The helper functions calculating distance and duration have been updated to strictly gate for running workouts, ensuring all metrics across the component only reflect run data. The week totals side column has been simplified into a single block that calculates the appropriate metric ("Completed", "Projected", or "Planned") depending on whether the week is in the past, current, or future.
-
-```tsx
 import { Fragment, useMemo, useState } from "react";
 
 export type CalendarWorkout = {
@@ -705,5 +702,3 @@ export default function CalendarGrid({
     </div>
   );
 }
-
-```
