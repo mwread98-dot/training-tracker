@@ -60,6 +60,22 @@ const schema = a
           .to(["read", "update"]),
       ]),
 
+    Availability: a
+      .model({
+        athleteEmail: a.string().required(),
+        date: a.date().required(),
+        status: a.enum(["available", "unavailable", "tentative"]),
+        note: a.string(),
+      })
+      .identifier(["athleteEmail", "date"])
+      .authorization((allow) => [
+        allow.group("Coaches").to(["read"]),
+        allow
+          .ownerDefinedIn("athleteEmail")
+          .identityClaim("email")
+          .to(["read", "create", "update", "delete"]),
+      ]),
+
     StravaToken: a
       .model({
         athleteEmail: a.string().required(),

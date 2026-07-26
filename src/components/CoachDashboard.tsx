@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "../../amplify/data/resource";
-import CalendarGrid, { type CalendarWorkout } from "./CalendarGrid";
+import CalendarGrid, { type CalendarWorkout, type DayAvailability } from "./CalendarGrid";
 import WorkoutForm from "./WorkoutForm";
 
 const client = generateClient<Schema>();
 type Profile = Schema["Profile"]["type"];
 type Workout = Schema["Workout"]["type"];
+type Availability = Schema["Availability"]["type"];
 
 const POLL_MS = 20000;
 
@@ -28,6 +29,7 @@ export default function CoachDashboard() {
   const [athletes, setAthletes] = useState<Profile[]>([]);
   const [selected, setSelected] = useState<Profile | null>(null);
   const [workouts, setWorkouts] = useState<Workout[]>([]);
+  const [availabilityRecords, setAvailabilityRecords] = useState<Availability[]>([]);
   const [year, setYear] = useState(new Date().getFullYear());
   const [month, setMonth] = useState(new Date().getMonth());
   const [showAddAthlete, setShowAddAthlete] = useState(false);
@@ -74,6 +76,27 @@ export default function CoachDashboard() {
     const interval = setInterval(() => loadWorkouts(selected.email), POLL_MS);
     return () => clearInterval(interval);
   }, [selected, loadWorkouts]);
+
+  const loadAvailability = useCallback(async (athleteEmail: string) => {
+    const { data, errors } = await client.models.Availability.list({
+      filter: { athleteEmail: { eq: athleteEmail } },
+    });
+    if (errors?.length) {
+      console.error("Failed to load availability", errors);
+      return;
+    }
+    setAvailabilityRecords(data);
+  }, []);
+
+  useEffect(() => {
+    if (!selected) {
+      setAvailabilityRecords([]);
+      return;
+    }
+    loadAvailability(selected.email);
+    const interval = setInterval(() => loadAvailability(selected.email), POLL_MS);
+    return () => clearInterval(interval);
+  }, [selected, loadAvailability]);
 
   async function addAthlete(e: React.FormEvent) {
     e.preventDefault();
@@ -189,6 +212,14 @@ export default function CoachDashboard() {
     [workouts]
   );
 
+  const availabilityMap = useMemo(() => {
+    const map: Record<string, DayAvailability> = {};
+    for (const a of availabilityRecords) {
+      if (a.status) map[a.date] = a.status as DayAvailability;
+    }
+    return map;
+  }, [availabilityRecords]);
+
   const completedActivitiesOnDate = useMemo(() => {
     if (!formState.open) return [];
     return workouts.filter(
@@ -250,6 +281,7 @@ export default function CoachDashboard() {
               year={year}
               month={month}
               workouts={calendarWorkouts}
+              availability={availabilityMap}
               onPrevMonth={() => {
                 const d = new Date(year, month - 1, 1);
                 setYear(d.getFullYear());
@@ -267,7 +299,7 @@ export default function CoachDashboard() {
               }}
             />
             <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 12 }}>
-              Planned sessions and every synced Strava activity appear here. Open any date to switch between the planned view and the completed activities recorded that day.
+              Planned sessions and every synced Strava activity appear here. Open any date to switch between the planned view and the completed activities recorded that day. The colored dot on a date shows the athlete's self-reported availability.
             </p>
           </div>
         ) : (

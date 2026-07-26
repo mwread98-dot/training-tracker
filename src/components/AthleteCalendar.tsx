@@ -2,11 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { generateClient } from "aws-amplify/data";
 import { fetchAuthSession, fetchUserAttributes } from "aws-amplify/auth";
 import type { Schema } from "../../amplify/data/resource";
-import CalendarGrid, { type CalendarWorkout } from "./CalendarGrid";
+import CalendarGrid, { type CalendarWorkout, type DayAvailability } from "./CalendarGrid";
 import WorkoutDetail from "./WorkoutDetail";
+import AvailabilityForm from "./AvailabilityForm";
 
 const client = generateClient<Schema>();
 type Workout = Schema["Workout"]["type"];
+type Availability = Schema["Availability"]["type"];
 
 const POLL_MS = 20000;
 const STRAVA_CLIENT_ID = (import.meta as any).env?.VITE_STRAVA_CLIENT_ID ?? "";
@@ -34,6 +36,8 @@ export default function AthleteCalendar() {
   const [email, setEmail] = useState<string | null>(null);
   const [idToken, setIdToken] = useState<string | null>(null);
   const [workouts, setWorkouts] = useState<Workout[]>([]);
+  const [availabilityRecords, setAvailabilityRecords] = useState<Availability[]>([]);
+  const [editingAvailabilityDate, setEditingAvailabilityDate] = useState<string | null>(null);
   const [year, setYear] = useState(new Date().getFullYear());
   const [month, setMonth] = useState(new Date().getMonth());
   const [selected, setSelected] = useState<Workout | null>(null);
@@ -125,6 +129,60 @@ export default function AthleteCalendar() {
     return () => clearInterval(interval);
   }, [loadWorkouts]);
 
+  const loadAvailability = useCallback(async () => {
+    if (!email || !idToken) return;
+    const { data: items, errors } = await client.models.Availability.list({
+      filter: { athleteEmail: { eq: email } },
+      authMode: "userPool",
+      authToken: idToken,
+    });
+    if (errors?.length) {
+      console.error("Failed to load availability", errors);
+      return;
+    }
+    setAvailabilityRecords(items);
+  }, [email, idToken]);
+
+  useEffect(() => {
+    loadAvailability();
+    const interval = setInterval(loadAvailability, POLL_MS);
+    return () => clearInterval(interval);
+  }, [loadAvailability]);
+
+  async function handleSaveAvailability(status: DayAvailability, note: string) {
+    if (!editingAvailabilityDate || !email || !idToken) return;
+    const existing = availabilityRecords.find((a) => a.date === editingAvailabilityDate);
+    const payload = {
+      athleteEmail: email,
+      date: editingAvailabilityDate,
+      status,
+      note: note || undefined,
+    };
+    const { errors } = existing
+      ? await client.models.Availability.update(payload, { authMode: "userPool", authToken: idToken })
+      : await client.models.Availability.create(payload, { authMode: "userPool", authToken: idToken });
+    if (errors?.length) {
+      console.error("Failed to save availability", errors);
+      return;
+    }
+    setEditingAvailabilityDate(null);
+    await loadAvailability();
+  }
+
+  async function handleClearAvailability() {
+    if (!editingAvailabilityDate || !email || !idToken) return;
+    const { errors } = await client.models.Availability.delete(
+      { athleteEmail: email, date: editingAvailabilityDate },
+      { authMode: "userPool", authToken: idToken }
+    );
+    if (errors?.length) {
+      console.error("Failed to clear availability", errors);
+      return;
+    }
+    setEditingAvailabilityDate(null);
+    await loadAvailability();
+  }
+
   async function handleSave(data: { completed: boolean; athleteNotes?: string }) {
     if (!selected || !idToken) return;
     const { errors } = await client.models.Workout.update(
@@ -167,6 +225,19 @@ export default function AthleteCalendar() {
         ),
       })),
     [workouts]
+  );
+
+  const availabilityMap = useMemo(() => {
+    const map: Record<string, DayAvailability> = {};
+    for (const a of availabilityRecords) {
+      if (a.status) map[a.date] = a.status as DayAvailability;
+    }
+    return map;
+  }, [availabilityRecords]);
+
+  const editingAvailabilityRecord = useMemo(
+    () => availabilityRecords.find((a) => a.date === editingAvailabilityDate) ?? null,
+    [availabilityRecords, editingAvailabilityDate]
   );
 
   const completedActivitiesOnDate = useMemo(() => {
@@ -225,6 +296,7 @@ export default function AthleteCalendar() {
           year={year}
           month={month}
           workouts={calendarWorkouts}
+          availability={availabilityMap}
           onPrevMonth={() => {
             const d = new Date(year, month - 1, 1);
             setYear(d.getFullYear());
@@ -235,6 +307,7 @@ export default function AthleteCalendar() {
             setYear(d.getFullYear());
             setMonth(d.getMonth());
           }}
+          onDayClick={(iso) => setEditingAvailabilityDate(iso)}
           onWorkoutClick={(w) => {
             const full = workouts.find((x) => x.entryId === w.id) ?? null;
             setSelected(full);
@@ -253,6 +326,17 @@ export default function AthleteCalendar() {
             completedActivitiesOnDate={completedActivitiesOnDate}
             onSave={handleSave}
             onClose={() => setSelected(null)}
+          />
+        )}
+
+        {editingAvailabilityDate && (
+          <AvailabilityForm
+            date={editingAvailabilityDate}
+            existingStatus={(editingAvailabilityRecord?.status as DayAvailability | null) ?? null}
+            existingNote={editingAvailabilityRecord?.note}
+            onSave={handleSaveAvailability}
+            onClear={editingAvailabilityRecord ? handleClearAvailability : undefined}
+            onClose={() => setEditingAvailabilityDate(null)}
           />
         )}
       </div>

@@ -15,14 +15,23 @@ export type CalendarWorkout = {
   hasActualStats?: boolean | null;
 };
 
+export type DayAvailability = "available" | "unavailable" | "tentative";
+
 type Props = {
   year: number;
   month: number;
   workouts: CalendarWorkout[];
+  availability?: Record<string, DayAvailability>;
   onPrevMonth: () => void;
   onNextMonth: () => void;
   onDayClick?: (dateIso: string) => void;
   onWorkoutClick?: (workout: CalendarWorkout) => void;
+};
+
+const AVAILABILITY_META: Record<DayAvailability, { label: string; color: string }> = {
+  available: { label: "Available", color: "#12a150" },
+  tentative: { label: "Tentative", color: "#e0a100" },
+  unavailable: { label: "Unavailable", color: "#d92d20" },
 };
 
 const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -235,6 +244,7 @@ export default function CalendarGrid({
   year,
   month,
   workouts,
+  availability,
   onPrevMonth,
   onNextMonth,
   onDayClick,
@@ -519,6 +529,25 @@ export default function CalendarGrid({
         </button>
       </div>
 
+      {availability && (
+        <div style={{ display: "flex", gap: 14, alignItems: "center", margin: "4px 0 12px", fontSize: 12, color: "var(--text-muted)" }}>
+          {(Object.keys(AVAILABILITY_META) as DayAvailability[]).map((key) => (
+            <span key={key} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+              <span
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: 999,
+                  background: AVAILABILITY_META[key].color,
+                  display: "inline-block",
+                }}
+              />
+              {AVAILABILITY_META[key].label}
+            </span>
+          ))}
+        </div>
+      )}
+
       <div className="calendar-grid">
         {DOW.map((d) => (
           <div className="calendar-dow" key={d}>
@@ -538,9 +567,24 @@ export default function CalendarGrid({
                   key={cell.iso}
                   className={`calendar-day ${cell.outside ? "outside" : ""} ${cell.iso === todayIso ? "today" : ""}`}
                   onClick={() => onDayClick?.(cell.iso)}
-                  style={{ cursor: onDayClick ? "pointer" : "default" }}
+                  style={{ cursor: onDayClick ? "pointer" : "default", position: "relative" }}
                 >
                   <span className="daynum">{cell.day}</span>
+                  {availability?.[cell.iso] && (
+                    <span
+                      className="availability-dot"
+                      title={AVAILABILITY_META[availability[cell.iso]].label}
+                      style={{
+                        position: "absolute",
+                        top: 6,
+                        right: 6,
+                        width: 8,
+                        height: 8,
+                        borderRadius: 999,
+                        background: AVAILABILITY_META[availability[cell.iso]].color,
+                      }}
+                    />
+                  )}
                   {(byDate[cell.iso] ?? []).map((w) => (
                     <button
                       key={w.id}
