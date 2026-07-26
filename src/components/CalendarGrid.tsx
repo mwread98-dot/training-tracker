@@ -11,17 +11,24 @@ export type CalendarWorkout = {
   durationMin?: number | null;
   actualDistanceKm?: number | null;
   actualDurationMin?: number | null;
+  targetPace?: string | null;
+  actualPace?: string | null;
   source?: string | null;
   hasActualStats?: boolean | null;
 };
 
 export type DayAvailability = "available" | "unavailable" | "tentative";
 
+export type DayAvailabilityInfo = {
+  status: DayAvailability;
+  note?: string | null;
+};
+
 type Props = {
   year: number;
   month: number;
   workouts: CalendarWorkout[];
-  availability?: Record<string, DayAvailability>;
+  availability?: Record<string, DayAvailabilityInfo>;
   onPrevMonth: () => void;
   onNextMonth: () => void;
   onDayClick?: (dateIso: string) => void;
@@ -171,6 +178,30 @@ function runDistanceLabel(workout: CalendarWorkout) {
   return `${distance.toFixed(1)} km`;
 }
 
+function runDurationLabel(workout: CalendarWorkout) {
+  if (!isRunWorkout(workout)) return null;
+
+  const duration = isWorkoutCompleted(workout)
+    ? workout.actualDurationMin ?? workout.durationMin
+    : workout.durationMin;
+
+  if (!duration || duration <= 0) return null;
+  return formatDuration(duration);
+}
+
+function runPaceLabel(workout: CalendarWorkout) {
+  if (!isRunWorkout(workout)) return null;
+
+  const pace = isWorkoutCompleted(workout) ? workout.actualPace ?? workout.targetPace : workout.targetPace;
+  return pace || null;
+}
+
+function chipMetaLabel(w: CalendarWorkout) {
+  const parts = [runDistanceLabel(w), runDurationLabel(w), runPaceLabel(w)].filter(Boolean);
+  if (parts.length === 0) return null;
+  return parts.join(" · ");
+}
+
 function workoutTitleLabel(w: CalendarWorkout) {
  return `${w.title}`;
 }
@@ -184,8 +215,8 @@ function workoutTitleFontSize(title: string) {
 
 function chipLabel(w: CalendarWorkout) {
   const title = workoutTitleLabel(w);
-  const distance = runDistanceLabel(w);
-  return `${title}${distance ? ` · ${distance}` : ""}`;
+  const meta = chipMetaLabel(w);
+  return `${title}${meta ? ` · ${meta}` : ""}`;
 }
 
 function formatDuration(totalMin: number) {
@@ -573,7 +604,11 @@ export default function CalendarGrid({
                   {availability?.[cell.iso] && (
                     <span
                       className="availability-dot"
-                      title={AVAILABILITY_META[availability[cell.iso]].label}
+                      title={
+                        availability[cell.iso].note
+                          ? `${AVAILABILITY_META[availability[cell.iso].status].label}: ${availability[cell.iso].note}`
+                          : AVAILABILITY_META[availability[cell.iso].status].label
+                      }
                       style={{
                         position: "absolute",
                         top: 6,
@@ -581,7 +616,7 @@ export default function CalendarGrid({
                         width: 8,
                         height: 8,
                         borderRadius: 999,
-                        background: AVAILABILITY_META[availability[cell.iso]].color,
+                        background: AVAILABILITY_META[availability[cell.iso].status].color,
                       }}
                     />
                   )}
@@ -601,8 +636,8 @@ export default function CalendarGrid({
                       >
                         {workoutTitleLabel(w)}
                       </span>
-                      {runDistanceLabel(w) && (
-                        <span className="workout-chip-distance">{runDistanceLabel(w)}</span>
+                      {chipMetaLabel(w) && (
+                        <span className="workout-chip-distance">{chipMetaLabel(w)}</span>
                       )}
                     </button>
                   ))}

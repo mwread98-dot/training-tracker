@@ -215,6 +215,8 @@ export default function AthleteCalendar() {
         durationMin: w.durationMin,
         actualDistanceKm: w.actualDistanceKm,
         actualDurationMin: w.actualDurationMin,
+        targetPace: w.targetPace,
+        actualPace: w.actualPace,
         source: (w.source as string | null | undefined) ?? (w.stravaActivityId ? "strava" : "coach"),
         hasActualStats: !!(
           w.actualDistanceKm ||
@@ -228,9 +230,9 @@ export default function AthleteCalendar() {
   );
 
   const availabilityMap = useMemo(() => {
-    const map: Record<string, DayAvailability> = {};
+    const map: Record<string, { status: DayAvailability; note?: string | null }> = {};
     for (const a of availabilityRecords) {
-      if (a.status) map[a.date] = a.status as DayAvailability;
+      if (a.status) map[a.date] = { status: a.status as DayAvailability, note: a.note };
     }
     return map;
   }, [availabilityRecords]);

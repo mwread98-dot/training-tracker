@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Schema } from "../../amplify/data/resource";
+import type { DayAvailability } from "./CalendarGrid";
 
 type Workout = Schema["Workout"]["type"];
 
@@ -9,9 +10,24 @@ type Props = {
   defaultDate: string;
   existing?: Workout | null;
   completedActivitiesOnDate?: Workout[];
+  athleteAvailability?: { status: DayAvailability; note?: string | null } | null;
+  copiedWorkout?: Workout | null;
+  onCopyWorkout?: () => void;
   onSave: (data: Partial<Workout> & { date: string; title: string }) => void;
   onDelete?: () => void;
   onClose: () => void;
+};
+
+const AVAILABILITY_LABEL: Record<DayAvailability, string> = {
+  available: "Available",
+  tentative: "Tentative",
+  unavailable: "Unavailable",
+};
+
+const AVAILABILITY_COLOR: Record<DayAvailability, string> = {
+  available: "#12a150",
+  tentative: "#e0a100",
+  unavailable: "#d92d20",
 };
 
 const TYPES = ["run", "cross_train", "strength"];
@@ -121,6 +137,9 @@ export default function WorkoutForm({
   defaultDate,
   existing,
   completedActivitiesOnDate = [],
+  athleteAvailability,
+  copiedWorkout,
+  onCopyWorkout,
   onSave,
   onDelete,
   onClose,
@@ -161,6 +180,20 @@ export default function WorkoutForm({
     setType(newType);
   }
 
+  function handlePaste() {
+    if (!copiedWorkout) return;
+    if (copiedWorkout.type && TYPES.includes(copiedWorkout.type)) setType(copiedWorkout.type);
+    if (copiedWorkout.intensity && INTENSITIES.includes(copiedWorkout.intensity)) {
+      setIntensity(copiedWorkout.intensity);
+    }
+    setTitle(copiedWorkout.title ?? "");
+    setDescription(copiedWorkout.description ?? "");
+    setDistanceKm(copiedWorkout.distanceKm != null ? String(copiedWorkout.distanceKm) : "");
+    setDurationMin(copiedWorkout.durationMin != null ? String(copiedWorkout.durationMin) : "");
+    setTargetPace(copiedWorkout.targetPace ?? "");
+    setCoachNotes(copiedWorkout.coachNotes ?? "");
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!title.trim()) return;
@@ -186,6 +219,37 @@ export default function WorkoutForm({
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h2 style={{ marginBottom: 4 }}>{existing ? "Edit workout" : "New workout"}</h2>
         <p style={{ color: "var(--text-muted)", fontSize: 14, marginBottom: 16 }}>For {athleteName}</p>
+
+        {athleteAvailability && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 8,
+              background: "var(--surface-muted)",
+              borderRadius: 8,
+              padding: "10px 12px",
+              marginBottom: 16,
+              fontSize: 13,
+            }}
+          >
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: 999,
+                marginTop: 4,
+                flexShrink: 0,
+                background: AVAILABILITY_COLOR[athleteAvailability.status],
+                display: "inline-block",
+              }}
+            />
+            <span>
+              <strong>{AVAILABILITY_LABEL[athleteAvailability.status]}</strong>
+              {athleteAvailability.note && ` — ${athleteAvailability.note}`}
+            </span>
+          </div>
+        )}
 
         {(hasCompletedActivities || existing) && (
           <div
@@ -248,6 +312,29 @@ export default function WorkoutForm({
           </div>
         ) : (
           <form onSubmit={handleSubmit}>
+            {!existing && copiedWorkout && (
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 8,
+                  background: "var(--accent-soft)",
+                  borderRadius: 8,
+                  padding: "8px 12px",
+                  marginBottom: 16,
+                  fontSize: 13,
+                }}
+              >
+                <span>
+                  Clipboard: <strong>{copiedWorkout.title}</strong>
+                </span>
+                <button type="button" className="btn btn-primary" onClick={handlePaste}>
+                  Paste copied workout
+                </button>
+              </div>
+            )}
+
             <div className="row">
               <div className="field">
                 <label>Date</label>
@@ -338,10 +425,15 @@ export default function WorkoutForm({
             </div>
 
             <div className="modal-actions">
-              <div>
+              <div style={{ display: "flex", gap: 12 }}>
                 {existing && onDelete && (
                   <button type="button" className="btn-text" onClick={onDelete}>
                     Delete
+                  </button>
+                )}
+                {existing && onCopyWorkout && (
+                  <button type="button" className="btn-text" onClick={onCopyWorkout}>
+                    Copy
                   </button>
                 )}
               </div>

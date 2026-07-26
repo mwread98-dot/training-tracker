@@ -39,6 +39,7 @@ export default function CoachDashboard() {
   const [formState, setFormState] = useState<
     { open: false } | { open: true; date: string; existing: Workout | null }
   >({ open: false });
+  const [copiedWorkout, setCopiedWorkout] = useState<Workout | null>(null);
 
   const loadAthletes = useCallback(async () => {
     const { data, errors } = await client.models.Profile.list();
@@ -187,6 +188,12 @@ export default function CoachDashboard() {
     }
   }
 
+  function copyWorkout() {
+    if (formState.open && formState.existing) {
+      setCopiedWorkout(formState.existing);
+    }
+  }
+
   const calendarWorkouts: CalendarWorkout[] = useMemo(
     () =>
       workouts.map((w) => ({
@@ -200,6 +207,8 @@ export default function CoachDashboard() {
         durationMin: w.durationMin,
         actualDistanceKm: w.actualDistanceKm,
         actualDurationMin: w.actualDurationMin,
+        targetPace: w.targetPace,
+        actualPace: w.actualPace,
         source: (w.source as string | null | undefined) ?? (w.stravaActivityId ? "strava" : "coach"),
         hasActualStats: !!(
           w.actualDistanceKm ||
@@ -213,9 +222,9 @@ export default function CoachDashboard() {
   );
 
   const availabilityMap = useMemo(() => {
-    const map: Record<string, DayAvailability> = {};
+    const map: Record<string, { status: DayAvailability; note?: string | null }> = {};
     for (const a of availabilityRecords) {
-      if (a.status) map[a.date] = a.status as DayAvailability;
+      if (a.status) map[a.date] = { status: a.status as DayAvailability, note: a.note };
     }
     return map;
   }, [availabilityRecords]);
@@ -234,6 +243,11 @@ export default function CoachDashboard() {
           !!w.avgHeartRate)
     );
   }, [workouts, formState]);
+
+  const availabilityForFormDate = useMemo(() => {
+    if (!formState.open) return null;
+    return availabilityMap[formState.date] ?? null;
+  }, [availabilityMap, formState]);
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 24 }}>
@@ -259,7 +273,7 @@ export default function CoachDashboard() {
         <div className="athlete-list">
           {athletes.length === 0 && (
             <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
-              No athletes yet — add your first one.
+              No athletes yet â€” add your first one.
             </p>
           )}
           {athletes.map((a) => (
@@ -275,6 +289,26 @@ export default function CoachDashboard() {
       </div>
 
       <div>
+        {copiedWorkout && (
+          <div
+            className="card"
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              padding: "10px 16px",
+              marginBottom: 12,
+              fontSize: 13,
+            }}
+          >
+            <span>
+              ðŸ“‹ Copied <strong>{copiedWorkout.title}</strong> â€” open any empty day and choose "Paste copied workout" to reuse it.
+            </span>
+            <button className="btn-text" onClick={() => setCopiedWorkout(null)}>
+              Clear
+            </button>
+          </div>
+        )}
         {selected ? (
           <div className="card">
             <CalendarGrid
@@ -351,6 +385,9 @@ export default function CoachDashboard() {
           defaultDate={formState.date}
           existing={formState.existing}
           completedActivitiesOnDate={completedActivitiesOnDate}
+          athleteAvailability={availabilityForFormDate}
+          copiedWorkout={copiedWorkout}
+          onCopyWorkout={copyWorkout}
           onSave={saveWorkout}
           onDelete={formState.existing ? deleteWorkout : undefined}
           onClose={() => setFormState({ open: false })}
