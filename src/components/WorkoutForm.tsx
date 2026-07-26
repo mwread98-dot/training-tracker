@@ -58,6 +58,80 @@ function fmtDuration(totalMin: number | null | undefined) {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
+// --- "fill from the right" digit-entry helpers for duration & pace ---
+// The user types raw digits (e.g. 1,1,2,3,0) and we group them from the right in
+// pairs (seconds, then minutes, then hours), the same way a stopwatch/timer entry
+// works: 11230 -> ss="30", mm="12", hh="1" -> "1:12:30". 1100 -> ss="00", mm="11" -> "11:00".
+function parseTimeEntryDigits(digits: string) {
+  const n = digits.length;
+  if (n === 0) return { hh: 0, mm: 0, ss: 0, showHours: false };
+  const ssLen = Math.min(2, n);
+  const ssPart = digits.slice(n - ssLen);
+  const afterSs = digits.slice(0, n - ssLen);
+  const mmLen = Math.min(2, afterSs.length);
+  const mmPart = afterSs.slice(afterSs.length - mmLen);
+  const hhPart = afterSs.slice(0, afterSs.length - mmLen);
+  return {
+    hh: hhPart ? parseInt(hhPart, 10) : 0,
+    mm: mmPart ? parseInt(mmPart, 10) : 0,
+    ss: ssPart ? parseInt(ssPart, 10) : 0,
+    showHours: hhPart.length > 0,
+  };
+}
+
+function formatTimeEntryDigits(digits: string) {
+  if (!digits) return "";
+  const { hh, mm, ss, showHours } = parseTimeEntryDigits(digits);
+  const ssStr = String(ss).padStart(2, "0");
+  if (showHours) return `${hh}:${String(mm).padStart(2, "0")}:${ssStr}`;
+  return `${mm}:${ssStr}`;
+}
+
+// Converts a raw digit buffer into total minutes (decimal), or null if empty.
+function timeEntryDigitsToMinutes(digits: string): number | null {
+  if (!digits) return null;
+  const { hh, mm, ss } = parseTimeEntryDigits(digits);
+  return hh * 60 + mm + ss / 60;
+}
+
+// Converts total minutes back into a raw digit buffer (inverse of the above),
+// used to seed the input when editing an existing workout or pasting a copy.
+function minutesToTimeEntryDigits(totalMin: number | null | undefined): string {
+  if (!totalMin || totalMin <= 0) return "";
+  const totalSeconds = Math.round(totalMin * 60);
+  const hh = Math.floor(totalSeconds / 3600);
+  const mm = Math.floor((totalSeconds % 3600) / 60);
+  const ss = totalSeconds % 60;
+  if (hh > 0) {
+    return `${hh}${String(mm).padStart(2, "0")}${String(ss).padStart(2, "0")}`;
+  }
+  return `${String(mm).padStart(2, "0")}${String(ss).padStart(2, "0")}`;
+}
+
+// Pulls the raw digits back out of an already-formatted pace/time string (e.g. "6:51" -> "651"),
+// so existing saved values can be loaded back into the digit-entry buffer for editing.
+function digitsFromFormatted(value: string | null | undefined): string {
+  return (value ?? "").replace(/\D/g, "");
+}
+
+function extractDigitsFromInput(value: string, maxDigits: number): string {
+  return value.replace(/\D/g, "").slice(-maxDigits);
+}
+
+function moveCursorToEnd(el: HTMLInputElement | null) {
+  if (!el) return;
+  const len = el.value.length;
+  requestAnimationFrame(() => {
+    try {
+      el.setSelectionRange(len, len);
+    } catch {
+      // ignore — some input types don't support selection ranges
+    }
+  });
+}
+
+type CalcField = "distance" | "duration" | "pace";
+
 function statText(label: string, value: string | null | undefined) {
   return value ? `${label}: ${value}` : null;
 }
@@ -157,9 +231,84 @@ export default function WorkoutForm({
   const [title, setTitle] = useState(existing?.title ?? "");
   const [description, setDescription] = useState(isStravaAutoCreated ? "" : existing?.description ?? "");
   const [distanceKm, setDistanceKm] = useState(isStravaAutoCreated ? "" : existing?.distanceKm?.toString() ?? "");
-  const [durationMin, setDurationMin] = useState(isStravaAutoCreated ? "" : existing?.durationMin?.toString() ?? "");
-  const [targetPace, setTargetPace] = useState(existing?.targetPace ?? "");
+  const [durationDigits, setDurationDigits] = useState(
+    isStravaAutoCreated ? "" : minutesToTimeEntryDigits(existing?.durationMin)
+  );
+  const [paceDigits, setPaceDigits] = useState(digitsFromFormatted(existing?.targetPace));
   const [coachNotes, setCoachNotes] = useState(existing?.coachNotes ?? "");
+
+  // Tracks the last two distinct fields (of distance/duration/pace) the coach has typed into
+  // during this session, so the one remaining field can be auto-calculated from those two.
+  const [manualOrder, setManualOrder] = useState<CalcField[]>([]);
+  const [calculatedField, setCalculatedField] = useState<CalcField | null>(null);
+
+  const durationMinValue = timeEntryDigitsToMinutes(durationDigits);
+  const paceMinValue = timeEntryDigitsToMinutes(paceDigits);
+  const distanceValue = (() => {
+    const v = parseFloat(distanceKm);
+    return Number.isFinite(v) ? v : null;
+  })();
+
+  function applyFieldInput(field: CalcField, values: { distance: number | null; duration: number | null; pace: number | null }) {
+    const nextOrder = [...manualOrder.filter((f) => f !== field), field].slice(-2) as CalcField[];
+    setManualOrder(nextOrder);
+
+    if (nextOrder.length === 2) {
+      const target = (["distance", "duration", "pace"] as CalcField[]).find((f) => !nextOrder.includes(f))!;
+      const have = (f: CalcField) => (f === "distance" ? values.distance : f === "duration" ? values.duration : values.pace);
+      const a = have(nextOrder[0]);
+      const b = have(nextOrder[1]);
+
+      if (a != null && a > 0 && b != null && b > 0) {
+        if (target === "pace") {
+          const durationV = values.duration!;
+          const distanceV = values.distance!;
+          setPaceDigits(minutesToTimeEntryDigits(durationV / distanceV));
+        } else if (target === "duration") {
+          const distanceV = values.distance!;
+          const paceV = values.pace!;
+          setDurationDigits(minutesToTimeEntryDigits(distanceV * paceV));
+        } else if (target === "distance") {
+          const durationV = values.duration!;
+          const paceV = values.pace!;
+          setDistanceKm((durationV / paceV).toFixed(2));
+        }
+        setCalculatedField(target);
+      }
+    }
+  }
+
+  function handleDistanceChange(raw: string) {
+    setDistanceKm(raw);
+    const v = parseFloat(raw);
+    applyFieldInput("distance", {
+      distance: Number.isFinite(v) && v > 0 ? v : null,
+      duration: durationMinValue,
+      pace: paceMinValue,
+    });
+  }
+
+  function handleDurationChange(raw: string, maxDigits: number) {
+    const digits = extractDigitsFromInput(raw, maxDigits);
+    setDurationDigits(digits);
+    const v = timeEntryDigitsToMinutes(digits);
+    applyFieldInput("duration", {
+      distance: distanceValue,
+      duration: v && v > 0 ? v : null,
+      pace: paceMinValue,
+    });
+  }
+
+  function handlePaceChange(raw: string, maxDigits: number) {
+    const digits = extractDigitsFromInput(raw, maxDigits);
+    setPaceDigits(digits);
+    const v = timeEntryDigitsToMinutes(digits);
+    applyFieldInput("pace", {
+      distance: distanceValue,
+      duration: durationMinValue,
+      pace: v && v > 0 ? v : null,
+    });
+  }
 
   const cfg = FIELD_CONFIG[type] ?? FIELD_CONFIG.run;
   const hasCompletedActivities = completedActivitiesOnDate.length > 0;
@@ -189,9 +338,11 @@ export default function WorkoutForm({
     setTitle(copiedWorkout.title ?? "");
     setDescription(copiedWorkout.description ?? "");
     setDistanceKm(copiedWorkout.distanceKm != null ? String(copiedWorkout.distanceKm) : "");
-    setDurationMin(copiedWorkout.durationMin != null ? String(copiedWorkout.durationMin) : "");
-    setTargetPace(copiedWorkout.targetPace ?? "");
+    setDurationDigits(minutesToTimeEntryDigits(copiedWorkout.durationMin));
+    setPaceDigits(digitsFromFormatted(copiedWorkout.targetPace));
     setCoachNotes(copiedWorkout.coachNotes ?? "");
+    setManualOrder([]);
+    setCalculatedField(null);
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -208,8 +359,8 @@ export default function WorkoutForm({
       title: title.trim(),
       description: description || undefined,
       distanceKm: cfg.distance && distanceKm ? parseFloat(distanceKm) : undefined,
-      durationMin: cfg.duration && durationMin ? parseFloat(durationMin) : undefined,
-      targetPace: cfg.pace && targetPace ? targetPace : undefined,
+      durationMin: cfg.duration && durationMinValue ? Math.round(durationMinValue * 100) / 100 : undefined,
+      targetPace: cfg.pace && paceDigits ? formatTimeEntryDigits(paceDigits) : undefined,
       coachNotes: coachNotes || undefined,
     });
   }
@@ -375,14 +526,34 @@ export default function WorkoutForm({
               <div className="row">
                 {cfg.distance && (
                   <div className="field">
-                    <label>Distance (km)</label>
-                    <input type="number" step="0.1" value={distanceKm} onChange={(e) => setDistanceKm(e.target.value)} />
+                    <label>
+                      Distance (km)
+                      {calculatedField === "distance" && <span style={{ color: "var(--text-muted)", fontWeight: 400 }}> · calculated</span>}
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={distanceKm}
+                      onChange={(e) => handleDistanceChange(e.target.value)}
+                    />
                   </div>
                 )}
                 {cfg.duration && (
                   <div className="field">
-                    <label>Duration (min)</label>
-                    <input type="number" step="1" value={durationMin} onChange={(e) => setDurationMin(e.target.value)} />
+                    <label>
+                      Duration
+                      {calculatedField === "duration" && <span style={{ color: "var(--text-muted)", fontWeight: 400 }}> · calculated</span>}
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="h:mm:ss"
+                      value={formatTimeEntryDigits(durationDigits)}
+                      onChange={(e) => {
+                        handleDurationChange(e.target.value, 6);
+                        moveCursorToEnd(e.target);
+                      }}
+                    />
                   </div>
                 )}
               </div>
@@ -392,11 +563,19 @@ export default function WorkoutForm({
               <div className="row">
                 {cfg.pace && (
                   <div className="field">
-                    <label>Target pace</label>
+                    <label>
+                      Target pace (min/km)
+                      {calculatedField === "pace" && <span style={{ color: "var(--text-muted)", fontWeight: 400 }}> · calculated</span>}
+                    </label>
                     <input
-                      value={targetPace}
-                      onChange={(e) => setTargetPace(e.target.value)}
-                      placeholder="e.g. 4:45/km"
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="m:ss"
+                      value={formatTimeEntryDigits(paceDigits)}
+                      onChange={(e) => {
+                        handlePaceChange(e.target.value, 4);
+                        moveCursorToEnd(e.target);
+                      }}
                     />
                   </div>
                 )}
