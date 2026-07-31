@@ -58,76 +58,60 @@ function fmtDuration(totalMin: number | null | undefined) {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
-// --- "fill from the right" digit-entry helpers for duration & pace ---
-// The user types raw digits (e.g. 1,1,2,3,0) and we group them from the right in
-// pairs (seconds, then minutes, then hours), the same way a stopwatch/timer entry
-// works: 11230 -> ss="30", mm="12", hh="1" -> "1:12:30". 1100 -> ss="00", mm="11" -> "11:00".
-function parseTimeEntryDigits(digits: string) {
-  const n = digits.length;
-  if (n === 0) return { hh: 0, mm: 0, ss: 0, showHours: false };
-  const ssLen = Math.min(2, n);
-  const ssPart = digits.slice(n - ssLen);
-  const afterSs = digits.slice(0, n - ssLen);
-  const mmLen = Math.min(2, afterSs.length);
-  const mmPart = afterSs.slice(afterSs.length - mmLen);
-  const hhPart = afterSs.slice(0, afterSs.length - mmLen);
-  return {
-    hh: hhPart ? parseInt(hhPart, 10) : 0,
-    mm: mmPart ? parseInt(mmPart, 10) : 0,
-    ss: ssPart ? parseInt(ssPart, 10) : 0,
-    showHours: hhPart.length > 0,
-  };
+type TimeInputKind = "duration" | "pace";
+
+// Keep the value the user is typing intact. Unlike the old stopwatch-style mask,
+// colons and digits are entered from left to right and zeros are only added after blur.
+function sanitizeTimeInput(value: string, kind: TimeInputKind) {
+  const cleaned = value.replace(/[^\d:]/g, "");
+  const maxParts = kind === "duration" ? 3 : 2;
+  return cleaned.split(":").slice(0, maxParts).join(":").slice(0, kind === "duration" ? 8 : 5);
 }
 
-function formatTimeEntryDigits(digits: string) {
-  if (!digits) return "";
-  const { hh, mm, ss, showHours } = parseTimeEntryDigits(digits);
-  const ssStr = String(ss).padStart(2, "0");
-  if (showHours) return `${hh}:${String(mm).padStart(2, "0")}:${ssStr}`;
-  return `${mm}:${ssStr}`;
+function timeInputToMinutes(value: string, kind: TimeInputKind): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parts = trimmed.split(":");
+  if (parts.some((part) => part !== "" && !/^\d+$/.test(part))) return null;
+  if (parts.length > (kind === "duration" ? 3 : 2)) return null;
+
+  const numbers = parts.map((part) => (part === "" ? 0 : Number(part)));
+  if (numbers.some((part) => !Number.isFinite(part))) return null;
+
+  let hours = 0;
+  let minutes = 0;
+  let seconds = 0;
+  if (parts.length === 3) {
+    [hours, minutes, seconds] = numbers;
+    if (minutes > 59 || seconds > 59) return null;
+  } else if (parts.length === 2) {
+    [minutes, seconds] = numbers;
+    if (seconds > 59) return null;
+  } else {
+    [minutes] = numbers;
+  }
+
+  const total = hours * 60 + minutes + seconds / 60;
+  return total > 0 ? total : null;
 }
 
-// Converts a raw digit buffer into total minutes (decimal), or null if empty.
-function timeEntryDigitsToMinutes(digits: string): number | null {
-  if (!digits) return null;
-  const { hh, mm, ss } = parseTimeEntryDigits(digits);
-  return hh * 60 + mm + ss / 60;
-}
-
-// Converts total minutes back into a raw digit buffer (inverse of the above),
-// used to seed the input when editing an existing workout or pasting a copy.
-function minutesToTimeEntryDigits(totalMin: number | null | undefined): string {
+function minutesToTimeInput(totalMin: number | null | undefined, kind: TimeInputKind): string {
   if (!totalMin || totalMin <= 0) return "";
   const totalSeconds = Math.round(totalMin * 60);
-  const hh = Math.floor(totalSeconds / 3600);
-  const mm = Math.floor((totalSeconds % 3600) / 60);
-  const ss = totalSeconds % 60;
-  if (hh > 0) {
-    return `${hh}${String(mm).padStart(2, "0")}${String(ss).padStart(2, "0")}`;
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (kind === "duration" && hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
   }
-  return `${String(mm).padStart(2, "0")}${String(ss).padStart(2, "0")}`;
+
+  const totalMinutes = kind === "pace" ? Math.floor(totalSeconds / 60) : minutes;
+  return `${totalMinutes}:${String(seconds).padStart(2, "0")}`;
 }
 
-// Pulls the raw digits back out of an already-formatted pace/time string (e.g. "6:51" -> "651"),
-// so existing saved values can be loaded back into the digit-entry buffer for editing.
-function digitsFromFormatted(value: string | null | undefined): string {
-  return (value ?? "").replace(/\D/g, "");
-}
-
-function extractDigitsFromInput(value: string, maxDigits: number): string {
-  return value.replace(/\D/g, "").slice(-maxDigits);
-}
-
-function moveCursorToEnd(el: HTMLInputElement | null) {
-  if (!el) return;
-  const len = el.value.length;
-  requestAnimationFrame(() => {
-    try {
-      el.setSelectionRange(len, len);
-    } catch {
-      // ignore — some input types don't support selection ranges
-    }
-  });
+function normalizeTimeInput(value: string, kind: TimeInputKind) {
+  return minutesToTimeInput(timeInputToMinutes(value, kind), kind);
 }
 
 type CalcField = "distance" | "duration" | "pace";
@@ -231,10 +215,10 @@ export default function WorkoutForm({
   const [title, setTitle] = useState(existing?.title ?? "");
   const [description, setDescription] = useState(isStravaAutoCreated ? "" : existing?.description ?? "");
   const [distanceKm, setDistanceKm] = useState(isStravaAutoCreated ? "" : existing?.distanceKm?.toString() ?? "");
-  const [durationDigits, setDurationDigits] = useState(
-    isStravaAutoCreated ? "" : minutesToTimeEntryDigits(existing?.durationMin)
+  const [durationInput, setDurationInput] = useState(
+    isStravaAutoCreated ? "" : minutesToTimeInput(existing?.durationMin, "duration")
   );
-  const [paceDigits, setPaceDigits] = useState(digitsFromFormatted(existing?.targetPace));
+  const [paceInput, setPaceInput] = useState(existing?.targetPace ?? "");
   const [coachNotes, setCoachNotes] = useState(existing?.coachNotes ?? "");
 
   // Tracks the last two distinct fields (of distance/duration/pace) the coach has typed into
@@ -242,8 +226,8 @@ export default function WorkoutForm({
   const [manualOrder, setManualOrder] = useState<CalcField[]>([]);
   const [calculatedField, setCalculatedField] = useState<CalcField | null>(null);
 
-  const durationMinValue = timeEntryDigitsToMinutes(durationDigits);
-  const paceMinValue = timeEntryDigitsToMinutes(paceDigits);
+  const durationMinValue = timeInputToMinutes(durationInput, "duration");
+  const paceMinValue = timeInputToMinutes(paceInput, "pace");
   const distanceValue = (() => {
     const v = parseFloat(distanceKm);
     return Number.isFinite(v) ? v : null;
@@ -263,11 +247,11 @@ export default function WorkoutForm({
         if (target === "pace") {
           const durationV = values.duration!;
           const distanceV = values.distance!;
-          setPaceDigits(minutesToTimeEntryDigits(durationV / distanceV));
+          setPaceInput(minutesToTimeInput(durationV / distanceV, "pace"));
         } else if (target === "duration") {
           const distanceV = values.distance!;
           const paceV = values.pace!;
-          setDurationDigits(minutesToTimeEntryDigits(distanceV * paceV));
+          setDurationInput(minutesToTimeInput(distanceV * paceV, "duration"));
         } else if (target === "distance") {
           const durationV = values.duration!;
           const paceV = values.pace!;
@@ -288,10 +272,10 @@ export default function WorkoutForm({
     });
   }
 
-  function handleDurationChange(raw: string, maxDigits: number) {
-    const digits = extractDigitsFromInput(raw, maxDigits);
-    setDurationDigits(digits);
-    const v = timeEntryDigitsToMinutes(digits);
+  function handleDurationChange(raw: string) {
+    const nextValue = sanitizeTimeInput(raw, "duration");
+    setDurationInput(nextValue);
+    const v = timeInputToMinutes(nextValue, "duration");
     applyFieldInput("duration", {
       distance: distanceValue,
       duration: v && v > 0 ? v : null,
@@ -299,10 +283,10 @@ export default function WorkoutForm({
     });
   }
 
-  function handlePaceChange(raw: string, maxDigits: number) {
-    const digits = extractDigitsFromInput(raw, maxDigits);
-    setPaceDigits(digits);
-    const v = timeEntryDigitsToMinutes(digits);
+  function handlePaceChange(raw: string) {
+    const nextValue = sanitizeTimeInput(raw, "pace");
+    setPaceInput(nextValue);
+    const v = timeInputToMinutes(nextValue, "pace");
     applyFieldInput("pace", {
       distance: distanceValue,
       duration: durationMinValue,
@@ -338,8 +322,8 @@ export default function WorkoutForm({
     setTitle(copiedWorkout.title ?? "");
     setDescription(copiedWorkout.description ?? "");
     setDistanceKm(copiedWorkout.distanceKm != null ? String(copiedWorkout.distanceKm) : "");
-    setDurationDigits(minutesToTimeEntryDigits(copiedWorkout.durationMin));
-    setPaceDigits(digitsFromFormatted(copiedWorkout.targetPace));
+    setDurationInput(minutesToTimeInput(copiedWorkout.durationMin, "duration"));
+    setPaceInput(copiedWorkout.targetPace ?? "");
     setCoachNotes(copiedWorkout.coachNotes ?? "");
     setManualOrder([]);
     setCalculatedField(null);
@@ -360,7 +344,7 @@ export default function WorkoutForm({
       description: description || undefined,
       distanceKm: cfg.distance && distanceKm ? parseFloat(distanceKm) : undefined,
       durationMin: cfg.duration && durationMinValue ? Math.round(durationMinValue * 100) / 100 : undefined,
-      targetPace: cfg.pace && paceDigits ? formatTimeEntryDigits(paceDigits) : undefined,
+      targetPace: cfg.pace && paceMinValue ? minutesToTimeInput(paceMinValue, "pace") : undefined,
       coachNotes: coachNotes || undefined,
     });
   }
@@ -558,14 +542,16 @@ export default function WorkoutForm({
                     <input
                       id="workout-duration"
                       type="text"
-                      inputMode="numeric"
+                      inputMode="text"
                       placeholder="h:mm:ss"
-                      value={formatTimeEntryDigits(durationDigits)}
-                      onChange={(e) => {
-                        handleDurationChange(e.target.value, 6);
-                        moveCursorToEnd(e.target);
-                      }}
+                      value={durationInput}
+                      onChange={(e) => handleDurationChange(e.target.value)}
+                      onBlur={() => setDurationInput((value) => normalizeTimeInput(value, "duration"))}
+                      autoComplete="off"
+                      spellCheck={false}
+                      aria-describedby="workout-duration-hint"
                     />
+                    <span id="workout-duration-hint" className="field-hint">Type left to right, for example 1:05:00.</span>
                   </div>
                 )}
               </div>
@@ -582,14 +568,16 @@ export default function WorkoutForm({
                     <input
                       id="workout-pace"
                       type="text"
-                      inputMode="numeric"
+                      inputMode="text"
                       placeholder="m:ss"
-                      value={formatTimeEntryDigits(paceDigits)}
-                      onChange={(e) => {
-                        handlePaceChange(e.target.value, 4);
-                        moveCursorToEnd(e.target);
-                      }}
+                      value={paceInput}
+                      onChange={(e) => handlePaceChange(e.target.value)}
+                      onBlur={() => setPaceInput((value) => normalizeTimeInput(value, "pace"))}
+                      autoComplete="off"
+                      spellCheck={false}
+                      aria-describedby="workout-pace-hint"
                     />
+                    <span id="workout-pace-hint" className="field-hint">Type left to right, for example 4:30.</span>
                   </div>
                 )}
                 {cfg.intensity && (

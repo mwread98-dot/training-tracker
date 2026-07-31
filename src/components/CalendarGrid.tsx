@@ -238,6 +238,23 @@ function formatDuration(totalMin: number) {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
+function formatMobileDistance(km: number) {
+  if (km <= 0) return null;
+  return `${Number.isInteger(km) ? km.toFixed(0) : km.toFixed(1)}k`;
+}
+
+function formatMobileDuration(totalMin: number) {
+  if (totalMin <= 0) return null;
+  const totalSeconds = Math.round(totalMin * 60);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) return `${hours}h${minutes > 0 ? String(minutes).padStart(2, "0") : ""}`;
+  if (seconds > 0) return `${minutes}:${String(seconds).padStart(2, "0")}`;
+  return `${minutes}m`;
+}
+
 function metricValue(point: ChartPoint, metric: ChartMetric, key: "planned" | "actual" | "expected") {
   if (metric === "km") {
     if (key === "planned") return point.plannedKm;
@@ -342,10 +359,18 @@ export default function CalendarGrid({
   useEffect(() => {
     setSelectedMobileDate((current) => {
       if (current && cells.some((cell) => !cell.outside && cell.iso === current)) return current;
-      const todayCell = cells.find((cell) => !cell.outside && cell.iso === todayIso);
-      return todayCell?.iso ?? cells.find((cell) => !cell.outside)?.iso ?? null;
+      return null;
     });
-  }, [cells, todayIso]);
+  }, [cells]);
+
+  useEffect(() => {
+    if (!selectedMobileDate) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSelectedMobileDate(null);
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [selectedMobileDate]);
 
   const selectedMobileCell = cells.find((cell) => cell.iso === selectedMobileDate) ?? null;
   const selectedMobileWorkouts = selectedMobileDate ? byDate[selectedMobileDate] ?? [] : [];
@@ -704,6 +729,9 @@ export default function CalendarGrid({
                   const availabilityInfo = availability?.[cell.iso];
                   const date = parseIso(cell.iso);
                   const selected = selectedMobileDate === cell.iso;
+                  const dayTotals = getDayTotals(cell.iso);
+                  const mobileDistance = formatMobileDistance(dayTotals.expectedKm);
+                  const mobileDuration = formatMobileDuration(dayTotals.expectedMin);
                   return (
                     <button
                       key={cell.iso}
@@ -720,6 +748,12 @@ export default function CalendarGrid({
                           aria-hidden="true"
                           style={{ background: AVAILABILITY_META[availabilityInfo.status].color }}
                         />
+                      )}
+                      {(mobileDistance || mobileDuration) && (
+                        <span className="mobile-calendar-metrics" aria-hidden="true">
+                          {mobileDistance && <strong>{mobileDistance}</strong>}
+                          {mobileDuration && <span>{mobileDuration}</span>}
+                        </span>
                       )}
                       <span className="mobile-workout-indicators" aria-hidden="true">
                         {items.slice(0, 3).map((workout) => (
@@ -741,47 +775,76 @@ export default function CalendarGrid({
         })}
 
         {selectedMobileCell && (
-          <section className="mobile-day-agenda" aria-live="polite">
-            <div className="mobile-day-agenda-header">
-              <div>
-                <h3>{DOW[(parseIso(selectedMobileCell.iso).getDay() + 6) % 7]} {formatDateLabel(parseIso(selectedMobileCell.iso))}</h3>
-                {selectedMobileAvailability && (
-                  <p>
-                    <span
-                      aria-hidden="true"
-                      style={{ background: AVAILABILITY_META[selectedMobileAvailability.status].color }}
-                    />
-                    {AVAILABILITY_META[selectedMobileAvailability.status].label}
-                    {selectedMobileAvailability.note && ` — ${selectedMobileAvailability.note}`}
-                  </p>
-                )}
+          <div className="mobile-day-agenda-backdrop" onClick={() => setSelectedMobileDate(null)}>
+            <section
+              className="mobile-day-agenda"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="mobile-day-agenda-title"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="mobile-day-agenda-header">
+                <div>
+                  <h3 id="mobile-day-agenda-title">
+                    {DOW[(parseIso(selectedMobileCell.iso).getDay() + 6) % 7]} {formatDateLabel(parseIso(selectedMobileCell.iso))}
+                  </h3>
+                  {selectedMobileAvailability && (
+                    <p>
+                      <span
+                        aria-hidden="true"
+                        style={{ background: AVAILABILITY_META[selectedMobileAvailability.status].color }}
+                      />
+                      {AVAILABILITY_META[selectedMobileAvailability.status].label}
+                      {selectedMobileAvailability.note && ` — ${selectedMobileAvailability.note}`}
+                    </p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className="mobile-day-agenda-close"
+                  onClick={() => setSelectedMobileDate(null)}
+                  aria-label="Close day details"
+                >
+                  &times;
+                </button>
               </div>
+
+              {selectedMobileWorkouts.length > 0 ? (
+                <div className="mobile-agenda-workouts">
+                  {selectedMobileWorkouts.map((workout) => (
+                    <button
+                      key={workout.id}
+                      type="button"
+                      className={chipClass(workout)}
+                      onClick={() => {
+                        setSelectedMobileDate(null);
+                        onWorkoutClick?.(workout);
+                      }}
+                      aria-label={`View ${chipLabel(workout)}`}
+                    >
+                      <span className="workout-chip-title">{workoutTitleLabel(workout)}</span>
+                      {chipMetaLabel(workout) && <span className="workout-chip-distance">{chipMetaLabel(workout)}</span>}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="mobile-agenda-empty">No sessions planned for this day.</p>
+              )}
+
               {onDayClick && (
-                <button type="button" className="btn btn-primary" onClick={() => onDayClick(selectedMobileCell.iso)}>
+                <button
+                  type="button"
+                  className="btn btn-primary mobile-day-action"
+                  onClick={() => {
+                    setSelectedMobileDate(null);
+                    onDayClick(selectedMobileCell.iso);
+                  }}
+                >
                   {dayActionLabel}
                 </button>
               )}
-            </div>
-
-            {selectedMobileWorkouts.length > 0 ? (
-              <div className="mobile-agenda-workouts">
-                {selectedMobileWorkouts.map((workout) => (
-                  <button
-                    key={workout.id}
-                    type="button"
-                    className={chipClass(workout)}
-                    onClick={() => onWorkoutClick?.(workout)}
-                    aria-label={`View ${chipLabel(workout)}`}
-                  >
-                    <span className="workout-chip-title">{workoutTitleLabel(workout)}</span>
-                    {chipMetaLabel(workout) && <span className="workout-chip-distance">{chipMetaLabel(workout)}</span>}
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <p className="mobile-agenda-empty">No sessions planned for this day.</p>
-            )}
-          </section>
+            </section>
+          </div>
         )}
       </div>
 
