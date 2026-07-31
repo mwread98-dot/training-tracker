@@ -13,7 +13,10 @@ const schema = a
       .identifier(["email"])
       .authorization((allow) => [
         allow.group("Coaches"),
-        allow.authenticated().to(["read"]),
+        allow
+          .ownerDefinedIn("email")
+          .identityClaim("email")
+          .to(["read"]),
       ]),
 
     Workout: a
