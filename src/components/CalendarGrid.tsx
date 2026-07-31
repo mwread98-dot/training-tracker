@@ -558,20 +558,22 @@ export default function CalendarGrid({
     return { ...point, isFutureWeek, value };
   });
 
-  const rawChartMaxValue = Math.max(1, ...chartVisiblePoints.map((point) => point.value));
+  // Ten weeks gives each touch target enough room on a phone, while desktop keeps the wider view.
+  const chartDisplayedPoints = chartWidth < 520 ? chartVisiblePoints.slice(-10) : chartVisiblePoints;
+  const rawChartMaxValue = Math.max(1, ...chartDisplayedPoints.map((point) => point.value));
   const chartScaleStep = 10 ** Math.floor(Math.log10(rawChartMaxValue));
   const chartMaxValue = Math.ceil(rawChartMaxValue / chartScaleStep) * chartScaleStep;
 
-  const chartSvgHeight = 238;
+  const chartSvgHeight = 228;
   const chartTop = 20;
-  const chartBottom = 38;
-  const chartLeft = 8;
-  const chartRight = 48;
+  const chartBottom = 34;
+  const chartLeft = 22;
+  const chartRight = 70;
   const chartSvgWidth = chartWidth;
   const chartPlotWidth = chartSvgWidth - chartLeft - chartRight;
   const chartPlotHeight = chartSvgHeight - chartTop - chartBottom;
   const chartBaselineY = chartTop + chartPlotHeight;
-  const chartX = (index: number) => chartLeft + (index / Math.max(1, chartVisiblePoints.length - 1)) * chartPlotWidth;
+  const chartX = (index: number) => chartLeft + (index / Math.max(1, chartDisplayedPoints.length - 1)) * chartPlotWidth;
   const chartY = (value: number) => chartTop + chartPlotHeight - (value / chartMaxValue) * chartPlotHeight;
   const formatChartValue = (value: number) =>
     chartMetric === "km" ? `${value.toFixed(1)} km` : formatDuration(value) ?? "—";
@@ -585,19 +587,19 @@ export default function CalendarGrid({
     if (points.length === 0) return "";
     return `${linePath(points)} L ${chartX(points[points.length - 1].index)} ${chartBaselineY} L ${chartX(points[0].index)} ${chartBaselineY} Z`;
   };
-  const actualSeries = chartVisiblePoints
+  const actualSeries = chartDisplayedPoints
     .map((point, index) => ({ index, value: point.value, isFutureWeek: point.isFutureWeek }))
     .filter((point) => !point.isFutureWeek);
-  const futureOnlySeries = chartVisiblePoints
+  const futureOnlySeries = chartDisplayedPoints
     .map((point, index) => ({ index, value: point.value, isFutureWeek: point.isFutureWeek }))
     .filter((point) => point.isFutureWeek);
   const plannedSeries = actualSeries.length > 0 && futureOnlySeries.length > 0
     ? [actualSeries[actualSeries.length - 1], ...futureOnlySeries]
     : futureOnlySeries;
-  const selectedChartPoint = chartVisiblePoints.find((point) => point.weekStartIso === selectedChartWeekIso)
-    ?? chartVisiblePoints.find((point) => point.isCurrentWeek)
-    ?? chartVisiblePoints[chartVisiblePoints.length - 1];
-  const selectedChartPointIndex = chartVisiblePoints.findIndex(
+  const selectedChartPoint = chartDisplayedPoints.find((point) => point.weekStartIso === selectedChartWeekIso)
+    ?? chartDisplayedPoints.find((point) => point.isCurrentWeek)
+    ?? chartDisplayedPoints[chartDisplayedPoints.length - 1];
+  const selectedChartPointIndex = chartDisplayedPoints.findIndex(
     (point) => point.weekStartIso === selectedChartPoint?.weekStartIso
   );
   const selectedWeekMode = selectedChartPoint?.isCurrentWeek
@@ -929,8 +931,9 @@ export default function CalendarGrid({
                     strokeWidth={1}
                   />
                   <text
-                    x={chartSvgWidth - chartRight + 20}
+                    x={chartSvgWidth - 8}
                     y={y + 5}
+                    textAnchor="end"
                     fontSize={13}
                     fill="var(--text-muted)"
                   >
@@ -989,7 +992,7 @@ export default function CalendarGrid({
               </g>
             )}
 
-            {chartVisiblePoints.map((point, index) => {
+            {chartDisplayedPoints.map((point, index) => {
               const valueLabel = formatChartValue(point.value);
               
               const modeLabel = point.isCurrentWeek 
@@ -1000,7 +1003,9 @@ export default function CalendarGrid({
 
               const x = chartX(index);
               const y = chartY(point.value);
-              const showLabel = index === 0 || point.weekStartIso === selectedChartPoint?.weekStartIso || index === chartVisiblePoints.length - 1 || parseIso(point.weekStartIso).getDate() <= 7;
+              const previousPoint = chartDisplayedPoints[index - 1];
+              const startsNewMonth = !previousPoint || parseIso(previousPoint.weekStartIso).getMonth() !== parseIso(point.weekStartIso).getMonth();
+              const showLabel = startsNewMonth && point.weekStartIso !== selectedChartPoint?.weekStartIso;
               return (
                 <g
                   key={point.weekStartIso}
@@ -1011,7 +1016,7 @@ export default function CalendarGrid({
                   <rect
                     x={index === 0 ? chartLeft : (chartX(index - 1) + x) / 2}
                     y={chartTop}
-                    width={(index === chartVisiblePoints.length - 1 ? chartSvgWidth - chartRight : (x + chartX(index + 1)) / 2) - (index === 0 ? chartLeft : (chartX(index - 1) + x) / 2)}
+                    width={(index === chartDisplayedPoints.length - 1 ? chartSvgWidth - chartRight : (x + chartX(index + 1)) / 2) - (index === 0 ? chartLeft : (chartX(index - 1) + x) / 2)}
                     height={chartPlotHeight + chartBottom}
                     fill="transparent"
                   />
