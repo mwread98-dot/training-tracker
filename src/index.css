@@ -143,6 +143,8 @@ input, select, textarea {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  max-width: 100%;
+  min-width: 0;
   padding: 20px;
 }
 
@@ -150,6 +152,10 @@ input, select, textarea {
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);
   gap: 24px;
+}
+
+.coach-layout > * {
+  min-width: 0;
 }
 
 .field {
@@ -631,8 +637,10 @@ input, select, textarea {
   }
 
   .coach-layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     gap: 16px;
+    max-width: 100%;
+    width: 100%;
   }
 
   .coach-layout > .card:first-child {
