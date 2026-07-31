@@ -307,6 +307,7 @@ export default function CalendarGrid({
   onWorkoutClick,
 }: Props) {
   const [chartMetric, setChartMetric] = useState<ChartMetric>("km");
+  const [selectedChartWeekIso, setSelectedChartWeekIso] = useState<string | null>(null);
   const [selectedMobileDate, setSelectedMobileDate] = useState<string | null>(null);
 
   const byDate = useMemo(() => {
@@ -489,7 +490,7 @@ export default function CalendarGrid({
 
   const chartPoints = useMemo(() => {
     const points: ChartPoint[] = [];
-    for (let offset = -12; offset <= 6; offset++) {
+    for (let offset = -10; offset <= 4; offset++) {
       const weekStart = addWeeks(currentWeekStart, offset);
       let plannedKm = 0;
       let plannedMin = 0;
@@ -545,24 +546,25 @@ export default function CalendarGrid({
     return { ...point, isFutureWeek, value };
   });
 
-  const chartMaxValue = Math.max(
-    1,
-    ...chartVisiblePoints.map((point) => point.value)
-  ) * 1.1;
+  const rawChartMaxValue = Math.max(1, ...chartVisiblePoints.map((point) => point.value));
+  const chartScaleStep = 10 ** Math.floor(Math.log10(rawChartMaxValue));
+  const chartMaxValue = Math.ceil(rawChartMaxValue / chartScaleStep) * chartScaleStep;
 
-  const chartSvgHeight = 220;
-  const chartTop = 18;
-  const chartBottom = 46;
-  const chartLeft = 10;
-  const chartRight = 70;
-  const chartGap = 44;
+  const chartSvgHeight = 238;
+  const chartTop = 20;
+  const chartBottom = 38;
+  const chartLeft = 8;
+  const chartRight = 48;
+  const chartSvgWidth = 720;
+  const chartPlotWidth = chartSvgWidth - chartLeft - chartRight;
   const chartPlotHeight = chartSvgHeight - chartTop - chartBottom;
-  const chartSvgWidth = Math.max(360, chartLeft + chartRight + Math.max(0, chartVisiblePoints.length - 1) * chartGap);
   const chartBaselineY = chartTop + chartPlotHeight;
-  const chartX = (index: number) => chartLeft + index * chartGap;
+  const chartX = (index: number) => chartLeft + (index / Math.max(1, chartVisiblePoints.length - 1)) * chartPlotWidth;
   const chartY = (value: number) => chartTop + chartPlotHeight - (value / chartMaxValue) * chartPlotHeight;
   const formatChartValue = (value: number) =>
     chartMetric === "km" ? `${value.toFixed(1)} km` : formatDuration(value) ?? "—";
+  const formatAxisValue = (value: number) =>
+    chartMetric === "km" ? `${value % 1 === 0 ? value.toFixed(0) : value.toFixed(1)} km` : formatDuration(value) ?? "0m";
   const linePath = (points: { index: number; value: number }[]) =>
     points
       .map((point, pointIndex) => `${pointIndex === 0 ? "M" : "L"} ${chartX(point.index)} ${chartY(point.value)}`)
@@ -580,8 +582,12 @@ export default function CalendarGrid({
   const plannedSeries = actualSeries.length > 0 && futureOnlySeries.length > 0
     ? [actualSeries[actualSeries.length - 1], ...futureOnlySeries]
     : futureOnlySeries;
-  const currentPointIndex = chartVisiblePoints.findIndex((point) => point.isCurrentWeek);
-  const currentPoint = currentPointIndex >= 0 ? chartVisiblePoints[currentPointIndex] : null;
+  const selectedChartPoint = chartVisiblePoints.find((point) => point.weekStartIso === selectedChartWeekIso)
+    ?? chartVisiblePoints.find((point) => point.isCurrentWeek)
+    ?? chartVisiblePoints[chartVisiblePoints.length - 1];
+  const selectedChartPointIndex = chartVisiblePoints.findIndex(
+    (point) => point.weekStartIso === selectedChartPoint?.weekStartIso
+  );
 
   return (
     <div>
@@ -859,11 +865,29 @@ export default function CalendarGrid({
             flexWrap: "wrap",
           }}
         >
-          <div>
-            <h3 style={{ marginBottom: 4 }}>Progress</h3>
+          <div className="progress-heading">
+            <h3>Weekly progress</h3>
+            {selectedChartPoint && (
+              <p>Week of {selectedChartPoint.label}</p>
+            )}
           </div>
           <MetricToggle value={chartMetric} onChange={setChartMetric} />
         </div>
+
+        {selectedChartPoint && (
+          <div className="chart-week-summary" aria-live="polite">
+            <div>
+              <span>Run</span>
+              <strong>{selectedChartPoint.actualKm.toFixed(1)} km</strong>
+              <small>{formatDuration(selectedChartPoint.actualMin) ?? "0m"}</small>
+            </div>
+            <div>
+              <span>Planned</span>
+              <strong>{selectedChartPoint.plannedKm.toFixed(1)} km</strong>
+              <small>{formatDuration(selectedChartPoint.plannedMin) ?? "0m"}</small>
+            </div>
+          </div>
+        )}
 
         <div className="progress-chart" aria-label="Weekly progress chart">
           <svg
@@ -892,7 +916,7 @@ export default function CalendarGrid({
                     fontSize={13}
                     fill="var(--text-muted)"
                   >
-                    {formatChartValue(tickValue)}
+                    {formatAxisValue(tickValue)}
                   </text>
                 </g>
               );
@@ -927,11 +951,11 @@ export default function CalendarGrid({
               />
             )}
 
-            {currentPoint && (
+            {selectedChartPoint && (
               <g>
                 <line
-                  x1={chartX(currentPointIndex)}
-                  x2={chartX(currentPointIndex)}
+                  x1={chartX(selectedChartPointIndex)}
+                  x2={chartX(selectedChartPointIndex)}
                   y1={chartTop}
                   y2={chartBaselineY}
                   stroke="#3002fc"
@@ -939,9 +963,9 @@ export default function CalendarGrid({
                   opacity={0.9}
                 />
                 <circle
-                  cx={chartX(currentPointIndex)}
-                  cy={chartY(currentPoint.value)}
-                  r={16}
+                  cx={chartX(selectedChartPointIndex)}
+                  cy={chartY(selectedChartPoint.value)}
+                  r={18}
                   fill="rgba(252, 76, 2, 0.18)"
                 />
               </g>
@@ -958,13 +982,34 @@ export default function CalendarGrid({
 
               const x = chartX(index);
               const y = chartY(point.value);
-              const showLabel = index === 0 || point.isCurrentWeek || index === chartVisiblePoints.length - 1 || parseIso(point.weekStartIso).getDate() <= 7;
+              const showLabel = index === 0 || point.weekStartIso === selectedChartPoint?.weekStartIso || index === chartVisiblePoints.length - 1 || parseIso(point.weekStartIso).getDate() <= 7;
               return (
-                <g key={point.weekStartIso}>
+                <g
+                  key={point.weekStartIso}
+                  className="chart-week-hit"
+                  onMouseEnter={() => setSelectedChartWeekIso(point.weekStartIso)}
+                  onClick={() => setSelectedChartWeekIso(point.weekStartIso)}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Select week starting ${point.label}: ${modeLabel}, ${valueLabel}`}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      setSelectedChartWeekIso(point.weekStartIso);
+                    }
+                  }}
+                >
+                  <rect
+                    x={index === 0 ? chartLeft : (chartX(index - 1) + x) / 2}
+                    y={chartTop}
+                    width={(index === chartVisiblePoints.length - 1 ? chartSvgWidth - chartRight : (x + chartX(index + 1)) / 2) - (index === 0 ? chartLeft : (chartX(index - 1) + x) / 2)}
+                    height={chartPlotHeight + chartBottom}
+                    fill="transparent"
+                  />
                   <circle
                     cx={x}
                     cy={y}
-                    r={point.isCurrentWeek ? 7 : 5}
+                    r={point.weekStartIso === selectedChartPoint?.weekStartIso ? 7 : 5}
                     fill={point.isFutureWeek ? "var(--surface)" : "#fff"}
                     stroke="#3002fc"
                     strokeWidth={4}
@@ -977,8 +1022,8 @@ export default function CalendarGrid({
                       y={chartSvgHeight - 16}
                       textAnchor="middle"
                       fontSize={12}
-                      fontWeight={point.isCurrentWeek ? 700 : 500}
-                      fill={point.isCurrentWeek ? "#3002fc" : "var(--text-muted)"}
+                      fontWeight={point.weekStartIso === selectedChartPoint?.weekStartIso ? 700 : 500}
+                      fill={point.weekStartIso === selectedChartPoint?.weekStartIso ? "#3002fc" : "var(--text-muted)"}
                     >
                       {point.isCurrentWeek ? "Current" : MONTH_SHORT[parseIso(point.weekStartIso).getMonth()].toUpperCase()}
                     </text>

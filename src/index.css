@@ -510,6 +510,60 @@ input, select, textarea {
   width: 100%;
 }
 
+.progress-heading h3 {
+  margin: 0;
+}
+
+.progress-heading p {
+  color: var(--text-muted);
+  font-size: 13px;
+  margin: 2px 0 0;
+}
+
+.chart-week-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0 0 12px;
+  overflow: hidden;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.chart-week-summary > div {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 8px;
+  align-items: baseline;
+  padding: 9px 12px;
+  background: var(--surface);
+}
+
+.chart-week-summary span {
+  grid-row: span 2;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.chart-week-summary strong {
+  color: var(--accent-dark);
+  font-size: 15px;
+}
+
+.chart-week-summary small {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.chart-week-hit {
+  cursor: pointer;
+}
+
+.chart-week-hit:focus-visible {
+  outline: none;
+}
+
 .empty-state {
   text-align: center;
   padding: 48px 20px;
@@ -1077,7 +1131,11 @@ input, select, textarea {
   }
 
   .progress-chart {
-    height: 190px;
+    height: 170px;
+  }
+
+  .chart-week-summary > div {
+    padding: 8px 9px;
   }
 
   .row {
