@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { DayAvailability } from "./CalendarGrid";
 
 type Props = {
@@ -27,10 +27,18 @@ export default function AvailabilityForm({
   const [status, setStatus] = useState<DayAvailability>(existingStatus ?? "available");
   const [note, setNote] = useState(existingNote ?? "");
 
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3 style={{ marginBottom: 4 }}>Set your availability</h3>
+      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="availability-title" onClick={(e) => e.stopPropagation()}>
+        <h3 id="availability-title" style={{ marginBottom: 4 }}>Set your availability</h3>
         <p style={{ color: "var(--text-muted)", fontSize: 14, marginTop: 0, marginBottom: 16 }}>{date}</p>
 
         <div className="field">
@@ -60,8 +68,9 @@ export default function AvailabilityForm({
         </div>
 
         <div className="field">
-          <label>Note (optional)</label>
+          <label htmlFor="availability-note">Note (optional)</label>
           <textarea
+            id="availability-note"
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder="e.g. travelling, only free evenings, injured…"

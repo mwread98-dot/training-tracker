@@ -540,7 +540,7 @@ export default function CalendarGrid({
   return (
     <div>
       <div className="calendar-header">
-        <button className="btn" onClick={onPrevMonth}>
+        <button type="button" className="btn" onClick={onPrevMonth} aria-label="Previous month">
           ← Prev
         </button>
         <div style={{ textAlign: "center" }}>
@@ -555,13 +555,13 @@ export default function CalendarGrid({
             </p>
           )}
         </div>
-        <button className="btn" onClick={onNextMonth}>
+        <button type="button" className="btn" onClick={onNextMonth} aria-label="Next month">
           Next →
         </button>
       </div>
 
       {availability && (
-        <div style={{ display: "flex", gap: 14, alignItems: "center", margin: "4px 0 12px", fontSize: 12, color: "var(--text-muted)" }}>
+        <div className="availability-legend">
           {(Object.keys(AVAILABILITY_META) as DayAvailability[]).map((key) => (
             <span key={key} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
               <span
@@ -579,7 +579,7 @@ export default function CalendarGrid({
         </div>
       )}
 
-      <div className="calendar-grid">
+      <div className="calendar-grid" aria-label={`${MONTH_NAMES[month]} ${year} calendar`}>
         {DOW.map((d) => (
           <div className="calendar-dow" key={d}>
             {d}
@@ -598,6 +598,15 @@ export default function CalendarGrid({
                   key={cell.iso}
                   className={`calendar-day ${cell.outside ? "outside" : ""} ${cell.iso === todayIso ? "today" : ""}`}
                   onClick={() => onDayClick?.(cell.iso)}
+                  onKeyDown={(event) => {
+                    if (onDayClick && (event.key === "Enter" || event.key === " ")) {
+                      event.preventDefault();
+                      onDayClick(cell.iso);
+                    }
+                  }}
+                  role={onDayClick ? "button" : undefined}
+                  tabIndex={onDayClick ? 0 : undefined}
+                  aria-label={onDayClick ? `Open ${cell.day} ${MONTH_NAMES[month]} ${year}` : undefined}
                   style={{ cursor: onDayClick ? "pointer" : "default", position: "relative" }}
                 >
                   <span className="daynum">{cell.day}</span>
@@ -658,7 +667,60 @@ export default function CalendarGrid({
         })}
       </div>
 
-      <div style={{ marginTop: 24, borderTop: "1px solid var(--border)", paddingTop: 18 }}>
+      <div className="mobile-calendar-list" aria-label={`${MONTH_NAMES[month]} ${year} calendar`}>
+        {cells.filter((cell) => !cell.outside).map((cell) => {
+          const items = byDate[cell.iso] ?? [];
+          const availabilityInfo = availability?.[cell.iso];
+          const date = parseIso(cell.iso);
+          return (
+            <section
+              key={cell.iso}
+              className={`mobile-calendar-day ${cell.iso === todayIso ? "today" : ""}`}
+            >
+              <button
+                type="button"
+                className="mobile-calendar-day-header"
+                onClick={() => onDayClick?.(cell.iso)}
+                disabled={!onDayClick}
+                aria-label={onDayClick ? `Set availability for ${formatDateLabel(date)}` : formatDateLabel(date)}
+              >
+                <span>
+                  <strong>{DOW[(date.getDay() + 6) % 7]}</strong> {formatDateLabel(date)}
+                </span>
+                {availabilityInfo && (
+                  <span className="mobile-availability">
+                    <span
+                      aria-hidden="true"
+                      style={{ background: AVAILABILITY_META[availabilityInfo.status].color }}
+                    />
+                    {AVAILABILITY_META[availabilityInfo.status].label}
+                  </span>
+                )}
+              </button>
+              {items.length > 0 ? (
+                <div className="mobile-workout-list">
+                  {items.map((workout) => (
+                    <button
+                      key={workout.id}
+                      type="button"
+                      className={chipClass(workout)}
+                      onClick={() => onWorkoutClick?.(workout)}
+                      aria-label={chipLabel(workout)}
+                    >
+                      <span className="workout-chip-title">{workoutTitleLabel(workout)}</span>
+                      {chipMetaLabel(workout) && <span className="workout-chip-distance">{chipMetaLabel(workout)}</span>}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="mobile-calendar-empty">No sessions</p>
+              )}
+            </section>
+          );
+        })}
+      </div>
+
+      <div className="progress-section">
         <div
           style={{
             display: "flex",
@@ -675,7 +737,7 @@ export default function CalendarGrid({
           <MetricToggle value={chartMetric} onChange={setChartMetric} />
         </div>
 
-        <div style={{ display: "flex", gap: 16, alignItems: "center", marginBottom: 10, fontSize: 13, color: "var(--text-muted)" }}>
+        <div className="progress-legend">
           <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
             <span style={{ width: 10, height: 10, borderRadius: 999, background: "#f59e0b", display: "inline-block" }} />
             Planned
@@ -686,7 +748,7 @@ export default function CalendarGrid({
           </span>
         </div>
 
-        <div style={{ overflowX: "auto", paddingBottom: 8 }}>
+        <div className="chart-scroll" aria-label="Scrollable weekly progress chart">
           <svg
             width={chartSvgWidth}
             height={chartSvgHeight}

@@ -365,10 +365,18 @@ export default function WorkoutForm({
     });
   }
 
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2 style={{ marginBottom: 4 }}>{existing ? "Edit workout" : "New workout"}</h2>
+      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="workout-form-title" onClick={(e) => e.stopPropagation()}>
+        <h2 id="workout-form-title" style={{ marginBottom: 4 }}>{existing ? "Edit workout" : "New workout"}</h2>
         <p style={{ color: "var(--text-muted)", fontSize: 14, marginBottom: 16 }}>For {athleteName}</p>
 
         {athleteAvailability && (
@@ -488,12 +496,12 @@ export default function WorkoutForm({
 
             <div className="row">
               <div className="field">
-                <label>Date</label>
-                <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+                <label htmlFor="workout-date">Date</label>
+                <input id="workout-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
               </div>
               <div className="field">
-                <label>Type</label>
-                <select value={type ?? "run"} onChange={(e) => handleTypeChange(e.target.value)}>
+                <label htmlFor="workout-type">Type</label>
+                <select id="workout-type" value={type ?? "run"} onChange={(e) => handleTypeChange(e.target.value)}>
                   {TYPES.map((t) => (
                     <option key={t} value={t}>
                       {t.replace("_", " ")}
@@ -504,8 +512,9 @@ export default function WorkoutForm({
             </div>
 
             <div className="field">
-              <label>Title</label>
+              <label htmlFor="workout-title">Title</label>
               <input
+                id="workout-title"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="e.g. 8mi Easy + Strides or 3x1mi Threshold"
@@ -514,8 +523,9 @@ export default function WorkoutForm({
             </div>
 
             <div className="field">
-              <label>Description for athlete</label>
+              <label htmlFor="workout-description">Description for athlete</label>
               <textarea
+                id="workout-description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Warm up, main set, cool down…"
@@ -526,11 +536,12 @@ export default function WorkoutForm({
               <div className="row">
                 {cfg.distance && (
                   <div className="field">
-                    <label>
+                    <label htmlFor="workout-distance">
                       Distance (km)
                       {calculatedField === "distance" && <span style={{ color: "var(--text-muted)", fontWeight: 400 }}> · calculated</span>}
                     </label>
                     <input
+                      id="workout-distance"
                       type="text"
                       inputMode="decimal"
                       value={distanceKm}
@@ -540,11 +551,12 @@ export default function WorkoutForm({
                 )}
                 {cfg.duration && (
                   <div className="field">
-                    <label>
+                    <label htmlFor="workout-duration">
                       Duration
                       {calculatedField === "duration" && <span style={{ color: "var(--text-muted)", fontWeight: 400 }}> · calculated</span>}
                     </label>
                     <input
+                      id="workout-duration"
                       type="text"
                       inputMode="numeric"
                       placeholder="h:mm:ss"
@@ -563,11 +575,12 @@ export default function WorkoutForm({
               <div className="row">
                 {cfg.pace && (
                   <div className="field">
-                    <label>
+                    <label htmlFor="workout-pace">
                       Target pace (min/km)
                       {calculatedField === "pace" && <span style={{ color: "var(--text-muted)", fontWeight: 400 }}> · calculated</span>}
                     </label>
                     <input
+                      id="workout-pace"
                       type="text"
                       inputMode="numeric"
                       placeholder="m:ss"
@@ -581,8 +594,8 @@ export default function WorkoutForm({
                 )}
                 {cfg.intensity && (
                   <div className="field">
-                    <label>Intensity</label>
-                    <select value={intensity ?? "easy"} onChange={(e) => setIntensity(e.target.value)}>
+                    <label htmlFor="workout-intensity">Intensity</label>
+                    <select id="workout-intensity" value={intensity ?? "easy"} onChange={(e) => setIntensity(e.target.value)}>
                       {INTENSITIES.map((i) => (
                         <option key={i} value={i}>
                           {formatIntensityLabel(i)}
@@ -595,8 +608,9 @@ export default function WorkoutForm({
             )}
 
             <div className="field">
-              <label>Private coach notes</label>
+              <label htmlFor="coach-notes">Private coach notes</label>
               <textarea
+                id="coach-notes"
                 value={coachNotes}
                 onChange={(e) => setCoachNotes(e.target.value)}
                 placeholder="Not shown prominently to athlete — for your own reference"

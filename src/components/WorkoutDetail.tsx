@@ -150,10 +150,18 @@ export default function WorkoutDetail({
     });
   }
 
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3 style={{ marginBottom: 6 }}>{workout.title}</h3>
+      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="workout-detail-title" onClick={(e) => e.stopPropagation()}>
+        <h3 id="workout-detail-title" style={{ marginBottom: 6 }}>{workout.title}</h3>
         <p style={{ color: "var(--text-muted)", fontSize: 14, marginTop: 0, marginBottom: 16 }}>
           {workout.date}
           {workout.type && ` · ${workout.type.replace("_", " ")}`}
@@ -194,8 +202,9 @@ export default function WorkoutDetail({
             ))}
 
             <div className="field" style={{ marginTop: 16 }}>
-              <label>Your notes (how it felt, conditions, etc.)</label>
+              <label htmlFor="activity-notes">Your notes (how it felt, conditions, etc.)</label>
               <textarea
+                id="activity-notes"
                 value={athleteNotes}
                 onChange={(e) => setAthleteNotes(e.target.value)}
                 placeholder="How did it feel? Any weather, terrain, fatigue, or niggles to mention?"
@@ -249,8 +258,8 @@ export default function WorkoutDetail({
 
             {!hasCompletedActivities && (
               <div className="field">
-                <label>Your notes (how it felt, conditions, etc.)</label>
-                <textarea value={athleteNotes} onChange={(e) => setAthleteNotes(e.target.value)} />
+                <label htmlFor="workout-notes">Your notes (how it felt, conditions, etc.)</label>
+                <textarea id="workout-notes" value={athleteNotes} onChange={(e) => setAthleteNotes(e.target.value)} />
               </div>
             )}
 

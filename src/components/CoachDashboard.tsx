@@ -99,6 +99,15 @@ export default function CoachDashboard() {
     return () => clearInterval(interval);
   }, [selected, loadAvailability]);
 
+  useEffect(() => {
+    if (!showAddAthlete) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setShowAddAthlete(false);
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [showAddAthlete]);
+
   async function addAthlete(e: React.FormEvent) {
     e.preventDefault();
     if (!newName.trim() || !newEmail.trim()) return;
@@ -250,7 +259,7 @@ export default function CoachDashboard() {
   }, [availabilityMap, formState]);
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 24 }}>
+    <div className="coach-layout">
       <div className="card" style={{ height: "fit-content" }}>
         <div
           style={{
@@ -261,7 +270,7 @@ export default function CoachDashboard() {
           }}
         >
           <h3 style={{ fontSize: 15 }}>Athletes</h3>
-          <button className="btn-text" onClick={() => setShowAddAthlete(true)}>
+          <button type="button" className="btn-text" onClick={() => setShowAddAthlete(true)}>
             + Add
           </button>
         </div>
@@ -291,7 +300,7 @@ export default function CoachDashboard() {
       <div>
         {copiedWorkout && (
           <div
-            className="card"
+            className="card copied-workout-banner"
             style={{
               display: "flex",
               justifyContent: "space-between",
@@ -343,16 +352,17 @@ export default function CoachDashboard() {
 
       {showAddAthlete && (
         <div className="modal-backdrop" onClick={() => setShowAddAthlete(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h2 style={{ marginBottom: 16 }}>Add an athlete</h2>
+          <div className="modal" role="dialog" aria-modal="true" aria-labelledby="add-athlete-title" onClick={(e) => e.stopPropagation()}>
+            <h2 id="add-athlete-title" style={{ marginBottom: 16 }}>Add an athlete</h2>
             <form onSubmit={addAthlete}>
               <div className="field">
-                <label>Name</label>
-                <input value={newName} onChange={(e) => setNewName(e.target.value)} required />
+                <label htmlFor="athlete-name">Name</label>
+                <input id="athlete-name" value={newName} onChange={(e) => setNewName(e.target.value)} required />
               </div>
               <div className="field">
-                <label>Email (must match their login email)</label>
+                <label htmlFor="athlete-email">Email (must match their login email)</label>
                 <input
+                  id="athlete-email"
                   type="email"
                   value={newEmail}
                   onChange={(e) => setNewEmail(e.target.value)}

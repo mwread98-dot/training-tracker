@@ -18,7 +18,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         </div>
         <div className="who">
           {user?.signInDetails?.loginId}
-          <button className="btn-text" onClick={signOut}>
+          <button type="button" className="btn-text" onClick={signOut}>
             Sign out
           </button>
         </div>
