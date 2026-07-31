@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 
 export type CalendarWorkout = {
   id: string;
@@ -309,6 +309,18 @@ export default function CalendarGrid({
   const [chartMetric, setChartMetric] = useState<ChartMetric>("km");
   const [selectedChartWeekIso, setSelectedChartWeekIso] = useState<string | null>(null);
   const [selectedMobileDate, setSelectedMobileDate] = useState<string | null>(null);
+  const chartContainerRef = useRef<HTMLDivElement>(null);
+  const [chartWidth, setChartWidth] = useState(720);
+
+  useEffect(() => {
+    const element = chartContainerRef.current;
+    if (!element) return;
+    const updateWidth = () => setChartWidth(Math.max(320, Math.round(element.clientWidth)));
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(element);
+    updateWidth();
+    return () => observer.disconnect();
+  }, []);
 
   const byDate = useMemo(() => {
     const map: Record<string, CalendarWorkout[]> = {};
@@ -555,7 +567,7 @@ export default function CalendarGrid({
   const chartBottom = 38;
   const chartLeft = 8;
   const chartRight = 48;
-  const chartSvgWidth = 720;
+  const chartSvgWidth = chartWidth;
   const chartPlotWidth = chartSvgWidth - chartLeft - chartRight;
   const chartPlotHeight = chartSvgHeight - chartTop - chartBottom;
   const chartBaselineY = chartTop + chartPlotHeight;
@@ -588,6 +600,17 @@ export default function CalendarGrid({
   const selectedChartPointIndex = chartVisiblePoints.findIndex(
     (point) => point.weekStartIso === selectedChartPoint?.weekStartIso
   );
+  const selectedWeekMode = selectedChartPoint?.isCurrentWeek
+    ? "Projected"
+    : selectedChartPoint?.isFutureWeek
+      ? "Planned"
+      : "Completed";
+  const selectedWeekKm = selectedChartPoint
+    ? metricValue(selectedChartPoint, "km", selectedChartPoint.isCurrentWeek ? "expected" : selectedChartPoint.isFutureWeek ? "planned" : "actual")
+    : 0;
+  const selectedWeekMin = selectedChartPoint
+    ? metricValue(selectedChartPoint, "time", selectedChartPoint.isCurrentWeek ? "expected" : selectedChartPoint.isFutureWeek ? "planned" : "actual")
+    : 0;
 
   return (
     <div>
@@ -877,24 +900,19 @@ export default function CalendarGrid({
         {selectedChartPoint && (
           <div className="chart-week-summary" aria-live="polite">
             <div>
-              <span>Run</span>
-              <strong>{selectedChartPoint.actualKm.toFixed(1)} km</strong>
-              <small>{formatDuration(selectedChartPoint.actualMin) ?? "0m"}</small>
-            </div>
-            <div>
-              <span>Planned</span>
-              <strong>{selectedChartPoint.plannedKm.toFixed(1)} km</strong>
-              <small>{formatDuration(selectedChartPoint.plannedMin) ?? "0m"}</small>
+              <span>{selectedWeekMode}</span>
+              <strong>{selectedWeekKm.toFixed(1)} km</strong>
+              <small>{formatDuration(selectedWeekMin) ?? "0m"}</small>
             </div>
           </div>
         )}
 
-        <div className="progress-chart" aria-label="Weekly progress chart">
+        <div ref={chartContainerRef} className="progress-chart" aria-label="Weekly progress chart">
           <svg
             viewBox={`0 0 ${chartSvgWidth} ${chartSvgHeight}`}
             preserveAspectRatio="none"
             role="img"
-            aria-label={`Weekly progress chart showing ${chartMetric === "km" ? "distance" : "time"}: actual for past and current weeks, planned for future weeks`}
+            aria-label={`Weekly progress chart showing ${chartMetric === "km" ? "distance" : "time"}: completed for past weeks, projected for the current week, and planned for future weeks`}
             style={{ display: "block", width: "100%", height: "100%" }}
           >
             {[0, 0.5, 1].map((tick) => {
@@ -989,15 +1007,6 @@ export default function CalendarGrid({
                   className="chart-week-hit"
                   onMouseEnter={() => setSelectedChartWeekIso(point.weekStartIso)}
                   onClick={() => setSelectedChartWeekIso(point.weekStartIso)}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`Select week starting ${point.label}: ${modeLabel}, ${valueLabel}`}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      setSelectedChartWeekIso(point.weekStartIso);
-                    }
-                  }}
                 >
                   <rect
                     x={index === 0 ? chartLeft : (chartX(index - 1) + x) / 2}
