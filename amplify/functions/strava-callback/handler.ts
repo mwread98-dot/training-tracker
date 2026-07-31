@@ -9,10 +9,23 @@ type Event = {
     code: string;
     athleteEmail: string;
   };
+  identity?: {
+    claims?: Record<string, unknown>;
+  };
 };
 
 export const handler = async (event: Event) => {
   const { code, athleteEmail } = event.arguments;
+  const identityEmail = event.identity?.claims?.email;
+  const normalizedIdentityEmail =
+    typeof identityEmail === "string" ? identityEmail.trim().toLowerCase() : "";
+  const normalizedAthleteEmail = athleteEmail.trim().toLowerCase();
+
+  if (!normalizedIdentityEmail || normalizedIdentityEmail !== normalizedAthleteEmail) {
+    console.error("Rejected Strava connection for a mismatched athlete identity.");
+    return { success: false, message: "You can only connect Strava to your own account." };
+  }
+
   const clientId = process.env.STRAVA_CLIENT_ID!;
   const clientSecret = process.env.STRAVA_CLIENT_SECRET!;
   const tableName = process.env.STRAVA_TOKEN_TABLE!;
@@ -53,7 +66,7 @@ export const handler = async (event: Event) => {
       new PutCommand({
         TableName: tableName,
         Item: {
-          athleteEmail: athleteEmail.toLowerCase(),
+          athleteEmail: normalizedAthleteEmail,
           stravaAthleteId: String(data.athlete.id),
           accessToken: data.access_token,
           refreshToken: data.refresh_token,

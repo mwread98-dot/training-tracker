@@ -16,6 +16,7 @@ type StravaActivity = {
   description?: string | null;
   sport_type: string;
   start_date: string;
+  start_date_local?: string;
   distance: number;
   moving_time: number;
   elapsed_time: number;
@@ -36,14 +37,14 @@ function sportToType(sport: string): Workout["type"] {
 
 function speedToPace(mps: number): string | null {
   if (mps <= 0) return null;
-  const secPerKm = 1000 / mps;
-  const mins = Math.floor(secPerKm / 60);
-  const secs = Math.round(secPerKm % 60);
+  const totalSecondsPerKm = Math.round(1000 / mps);
+  const mins = Math.floor(totalSecondsPerKm / 60);
+  const secs = totalSecondsPerKm % 60;
   return `${mins}:${String(secs).padStart(2, "0")}/km`;
 }
 
-function toDateStr(isoTimestamp: string): string {
-  return isoTimestamp.slice(0, 10);
+function toDateStr(activity: StravaActivity): string {
+  return (activity.start_date_local || activity.start_date).slice(0, 10);
 }
 
 function toDurationMinutes(seconds: number) {
@@ -197,7 +198,7 @@ async function getAthleteName(athleteEmail: string): Promise<string | undefined>
 }
 
 async function applyActivityToWorkout(entryId: string, athleteEmail: string, activity: StravaActivity) {
-  const date = toDateStr(activity.start_date);
+  const date = toDateStr(activity);
   const stats = toActualStats(activity);
 
   const { errors } = await client.models.Workout.update({
@@ -217,7 +218,7 @@ async function applyActivityToWorkout(entryId: string, athleteEmail: string, act
 }
 
 async function createWorkoutFromActivity(athleteEmail: string, activity: StravaActivity) {
-  const date = toDateStr(activity.start_date);
+  const date = toDateStr(activity);
   const stats = toActualStats(activity);
   const athleteName = await getAthleteName(athleteEmail);
 
@@ -289,10 +290,14 @@ async function syncActivityForAthlete(athleteEmail: string, activity: StravaActi
     return;
   }
 
-  const dateStr = toDateStr(activity.start_date);
+  const dateStr = toDateStr(activity);
+  const activityType = sportToType(activity.sport_type);
   const sameDayWorkouts = await listWorkoutsOnDate(athleteEmail, dateStr);
   const unsyncedPlanned = sameDayWorkouts.find(
-    (workout) => workout.source !== "strava" && !workout.stravaActivityId
+    (workout) =>
+      workout.source !== "strava" &&
+      !workout.stravaActivityId &&
+      workout.type === activityType
   );
 
   if (unsyncedPlanned) {
