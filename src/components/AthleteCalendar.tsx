@@ -309,6 +309,7 @@ export default function AthleteCalendar() {
             setYear(d.getFullYear());
             setMonth(d.getMonth());
           }}
+          dayActionLabel="Set availability"
           onDayClick={(iso) => setEditingAvailabilityDate(iso)}
           onWorkoutClick={(w) => {
             const full = workouts.find((x) => x.entryId === w.id) ?? null;

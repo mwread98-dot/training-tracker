@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 
 export type CalendarWorkout = {
   id: string;
@@ -31,6 +31,7 @@ type Props = {
   availability?: Record<string, DayAvailabilityInfo>;
   onPrevMonth: () => void;
   onNextMonth: () => void;
+  dayActionLabel?: string;
   onDayClick?: (dateIso: string) => void;
   onWorkoutClick?: (workout: CalendarWorkout) => void;
 };
@@ -167,6 +168,12 @@ function chipClass(w: CalendarWorkout) {
   return classes.join(" ");
 }
 
+function mobileIndicatorClass(w: CalendarWorkout) {
+  const classes = ["mobile-workout-indicator", `intensity-${getIntensityClass(w.intensity)}`];
+  if (isWorkoutCompleted(w)) classes.push("completed");
+  return classes.join(" ");
+}
+
 function runDistanceLabel(workout: CalendarWorkout) {
   if (!isRunWorkout(workout)) return null;
 
@@ -278,10 +285,12 @@ export default function CalendarGrid({
   availability,
   onPrevMonth,
   onNextMonth,
+  dayActionLabel = "Add workout",
   onDayClick,
   onWorkoutClick,
 }: Props) {
   const [chartMetric, setChartMetric] = useState<ChartMetric>("km");
+  const [selectedMobileDate, setSelectedMobileDate] = useState<string | null>(null);
 
   const byDate = useMemo(() => {
     const map: Record<string, CalendarWorkout[]> = {};
@@ -329,6 +338,18 @@ export default function CalendarGrid({
 
   const today = new Date();
   const todayIso = toIso(today.getFullYear(), today.getMonth(), today.getDate());
+
+  useEffect(() => {
+    setSelectedMobileDate((current) => {
+      if (current && cells.some((cell) => !cell.outside && cell.iso === current)) return current;
+      const todayCell = cells.find((cell) => !cell.outside && cell.iso === todayIso);
+      return todayCell?.iso ?? cells.find((cell) => !cell.outside)?.iso ?? null;
+    });
+  }, [cells, todayIso]);
+
+  const selectedMobileCell = cells.find((cell) => cell.iso === selectedMobileDate) ?? null;
+  const selectedMobileWorkouts = selectedMobileDate ? byDate[selectedMobileDate] ?? [] : [];
+  const selectedMobileAvailability = selectedMobileDate ? availability?.[selectedMobileDate] : undefined;
   const currentWeekStart = startOfWeek(today);
   const currentWeekStartIso = toIso(
     currentWeekStart.getFullYear(),
@@ -667,57 +688,101 @@ export default function CalendarGrid({
         })}
       </div>
 
-      <div className="mobile-calendar-list" aria-label={`${MONTH_NAMES[month]} ${year} calendar`}>
-        {cells.filter((cell) => !cell.outside).map((cell) => {
-          const items = byDate[cell.iso] ?? [];
-          const availabilityInfo = availability?.[cell.iso];
-          const date = parseIso(cell.iso);
+      <div className="mobile-calendar" aria-label={`${MONTH_NAMES[month]} ${year} calendar`}>
+        <div className="mobile-calendar-dow" aria-hidden="true">
+          {DOW.map((day) => <span key={day}>{day}</span>)}
+        </div>
+
+        {Array.from({ length: cells.length / 7 }).map((_, weekIndex) => {
+          const totals = weekTotals[weekIndex];
+          const formattedDuration = formatDuration(totals.min);
           return (
-            <section
-              key={cell.iso}
-              className={`mobile-calendar-day ${cell.iso === todayIso ? "today" : ""}`}
-            >
-              <button
-                type="button"
-                className="mobile-calendar-day-header"
-                onClick={() => onDayClick?.(cell.iso)}
-                disabled={!onDayClick}
-                aria-label={onDayClick ? `Set availability for ${formatDateLabel(date)}` : formatDateLabel(date)}
-              >
-                <span>
-                  <strong>{DOW[(date.getDay() + 6) % 7]}</strong> {formatDateLabel(date)}
-                </span>
-                {availabilityInfo && (
-                  <span className="mobile-availability">
-                    <span
-                      aria-hidden="true"
-                      style={{ background: AVAILABILITY_META[availabilityInfo.status].color }}
-                    />
-                    {AVAILABILITY_META[availabilityInfo.status].label}
-                  </span>
-                )}
-              </button>
-              {items.length > 0 ? (
-                <div className="mobile-workout-list">
-                  {items.map((workout) => (
+            <section className="mobile-calendar-week" key={weekIndex} aria-label={`Week ${weekIndex + 1}`}>
+              <div className="mobile-calendar-week-days">
+                {cells.slice(weekIndex * 7, weekIndex * 7 + 7).map((cell) => {
+                  const items = byDate[cell.iso] ?? [];
+                  const availabilityInfo = availability?.[cell.iso];
+                  const date = parseIso(cell.iso);
+                  const selected = selectedMobileDate === cell.iso;
+                  return (
                     <button
-                      key={workout.id}
+                      key={cell.iso}
                       type="button"
-                      className={chipClass(workout)}
-                      onClick={() => onWorkoutClick?.(workout)}
-                      aria-label={chipLabel(workout)}
+                      className={`mobile-calendar-cell ${cell.outside ? "outside" : ""} ${cell.iso === todayIso ? "today" : ""} ${selected ? "selected" : ""}`}
+                      onClick={() => setSelectedMobileDate(cell.iso)}
+                      aria-pressed={selected}
+                      aria-label={`${formatDateLabel(date)}${items.length ? `, ${items.length} ${items.length === 1 ? "session" : "sessions"}` : ", no sessions"}${availabilityInfo ? `, ${AVAILABILITY_META[availabilityInfo.status].label}` : ""}`}
                     >
-                      <span className="workout-chip-title">{workoutTitleLabel(workout)}</span>
-                      {chipMetaLabel(workout) && <span className="workout-chip-distance">{chipMetaLabel(workout)}</span>}
+                      <span className="mobile-calendar-date">{cell.day}</span>
+                      {availabilityInfo && (
+                        <span
+                          className="mobile-calendar-availability-dot"
+                          aria-hidden="true"
+                          style={{ background: AVAILABILITY_META[availabilityInfo.status].color }}
+                        />
+                      )}
+                      <span className="mobile-workout-indicators" aria-hidden="true">
+                        {items.slice(0, 3).map((workout) => (
+                          <span key={workout.id} className={mobileIndicatorClass(workout)} />
+                        ))}
+                        {items.length > 3 && <span className="mobile-workout-more">+{items.length - 3}</span>}
+                      </span>
                     </button>
-                  ))}
-                </div>
-              ) : (
-                <p className="mobile-calendar-empty">No sessions</p>
-              )}
+                  );
+                })}
+              </div>
+              <div className="mobile-week-total">
+                <strong>{totals.label}</strong>
+                <span>{totals.km > 0 ? `${totals.km.toFixed(1)} km` : "No running distance"}</span>
+                {formattedDuration && <span>{formattedDuration}</span>}
+              </div>
             </section>
           );
         })}
+
+        {selectedMobileCell && (
+          <section className="mobile-day-agenda" aria-live="polite">
+            <div className="mobile-day-agenda-header">
+              <div>
+                <h3>{DOW[(parseIso(selectedMobileCell.iso).getDay() + 6) % 7]} {formatDateLabel(parseIso(selectedMobileCell.iso))}</h3>
+                {selectedMobileAvailability && (
+                  <p>
+                    <span
+                      aria-hidden="true"
+                      style={{ background: AVAILABILITY_META[selectedMobileAvailability.status].color }}
+                    />
+                    {AVAILABILITY_META[selectedMobileAvailability.status].label}
+                    {selectedMobileAvailability.note && ` — ${selectedMobileAvailability.note}`}
+                  </p>
+                )}
+              </div>
+              {onDayClick && (
+                <button type="button" className="btn btn-primary" onClick={() => onDayClick(selectedMobileCell.iso)}>
+                  {dayActionLabel}
+                </button>
+              )}
+            </div>
+
+            {selectedMobileWorkouts.length > 0 ? (
+              <div className="mobile-agenda-workouts">
+                {selectedMobileWorkouts.map((workout) => (
+                  <button
+                    key={workout.id}
+                    type="button"
+                    className={chipClass(workout)}
+                    onClick={() => onWorkoutClick?.(workout)}
+                    aria-label={`View ${chipLabel(workout)}`}
+                  >
+                    <span className="workout-chip-title">{workoutTitleLabel(workout)}</span>
+                    {chipMetaLabel(workout) && <span className="workout-chip-distance">{chipMetaLabel(workout)}</span>}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="mobile-agenda-empty">No sessions planned for this day.</p>
+            )}
+          </section>
+        )}
       </div>
 
       <div className="progress-section">

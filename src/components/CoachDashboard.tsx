@@ -335,6 +335,7 @@ export default function CoachDashboard() {
                 setYear(d.getFullYear());
                 setMonth(d.getMonth());
               }}
+              dayActionLabel="Add workout"
               onDayClick={(iso) => setFormState({ open: true, date: iso, existing: null })}
               onWorkoutClick={(w) => {
                 const full = workouts.find((x) => x.entryId === w.id) ?? null;

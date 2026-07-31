@@ -208,7 +208,7 @@ input, select, textarea {
   gap: 8px;
 }
 
-.mobile-calendar-list {
+.mobile-calendar {
   display: none;
 }
 
@@ -718,82 +718,206 @@ input, select, textarea {
     display: none;
   }
 
-  .mobile-calendar-list {
+  .mobile-calendar {
+    display: block;
+    margin-inline: -8px;
+  }
+
+  .mobile-calendar-dow,
+  .mobile-calendar-week-days {
     display: grid;
-    gap: 10px;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 1px;
   }
 
-  .mobile-calendar-day {
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    overflow: hidden;
+  .mobile-calendar-dow {
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 600;
+    margin-bottom: 4px;
+    text-align: center;
+  }
+
+  .mobile-calendar-dow span {
+    padding-block: 3px;
+  }
+
+  .mobile-calendar-week {
+    border-top: 1px solid var(--border);
+    padding-top: 3px;
+  }
+
+  .mobile-calendar-cell {
+    appearance: none;
     background: var(--surface);
+    border: 1px solid transparent;
+    border-radius: 6px;
+    color: var(--text);
+    min-height: 62px;
+    min-width: 0;
+    padding: 5px 3px;
+    position: relative;
+    text-align: center;
   }
 
-  .mobile-calendar-day.today {
+  .mobile-calendar-cell.outside {
+    background: transparent;
+    color: var(--text-muted);
+    opacity: 0.45;
+  }
+
+  .mobile-calendar-cell.today .mobile-calendar-date {
+    background: var(--accent);
+    border-radius: 99px;
+    color: #fff;
+  }
+
+  .mobile-calendar-cell.selected {
+    background: var(--accent-soft);
     border-color: var(--accent);
     box-shadow: inset 0 0 0 1px var(--accent);
   }
 
-  .mobile-calendar-day-header {
+  .mobile-calendar-date {
     align-items: center;
-    background: #f5f4f0;
-    border: 0;
-    color: var(--text);
-    display: flex;
-    font: inherit;
-    justify-content: space-between;
-    min-height: 44px;
-    padding: 9px 12px;
-    text-align: left;
-    width: 100%;
-  }
-
-  .mobile-calendar-day-header:disabled {
-    cursor: default;
-  }
-
-  .mobile-availability {
-    align-items: center;
-    color: var(--text-muted);
     display: inline-flex;
     font-size: 12px;
-    gap: 5px;
-    text-align: right;
+    font-weight: 600;
+    height: 24px;
+    justify-content: center;
+    line-height: 1;
+    width: 24px;
   }
 
-  .mobile-availability > span {
+  .mobile-calendar-availability-dot {
+    border: 2px solid var(--surface);
+    border-radius: 99px;
+    height: 9px;
+    position: absolute;
+    right: 3px;
+    top: 3px;
+    width: 9px;
+  }
+
+  .mobile-workout-indicators {
+    display: grid;
+    gap: 2px;
+    margin: 5px auto 0;
+    max-width: 28px;
+  }
+
+  .mobile-workout-indicator {
+    background: #bcd1e6;
+    border-radius: 99px;
+    display: block;
+    height: 4px;
+  }
+
+  .mobile-workout-indicator.intensity-marathon_pace {
+    background: #48b885;
+  }
+
+  .mobile-workout-indicator.intensity-threshold {
+    background: #e0a100;
+  }
+
+  .mobile-workout-indicator.intensity-vo2_max {
+    background: #d75a9b;
+  }
+
+  .mobile-workout-indicator.intensity-speed_work {
+    background: #dc604d;
+  }
+
+  .mobile-workout-indicator.completed {
+    background: #16a34a;
+  }
+
+  .mobile-workout-more {
+    color: var(--text-muted);
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .mobile-week-total {
+    align-items: center;
+    background: #f1efe6;
+    border-radius: 5px;
+    color: var(--text-muted);
+    display: flex;
+    font-size: 11px;
+    gap: 8px;
+    justify-content: flex-end;
+    margin: 3px 0 5px;
+    min-height: 30px;
+    padding: 5px 8px;
+  }
+
+  .mobile-week-total strong {
+    color: var(--accent-dark);
+    margin-right: auto;
+  }
+
+  .mobile-day-agenda {
+    border-top: 2px solid var(--accent);
+    margin: 14px 8px 0;
+    padding-top: 14px;
+  }
+
+  .mobile-day-agenda-header {
+    align-items: flex-start;
+    display: flex;
+    gap: 10px;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+
+  .mobile-day-agenda-header h3 {
+    font-size: 17px;
+  }
+
+  .mobile-day-agenda-header p {
+    color: var(--text-muted);
+    font-size: 12px;
+    margin: 3px 0 0;
+  }
+
+  .mobile-day-agenda-header p > span {
     border-radius: 99px;
     display: inline-block;
     height: 8px;
+    margin-right: 5px;
     width: 8px;
   }
 
-  .mobile-workout-list {
+  .mobile-day-agenda-header .btn {
+    flex: 0 0 auto;
+  }
+
+  .mobile-agenda-workouts {
     display: grid;
-    gap: 7px;
-    padding: 10px 12px;
+    gap: 8px;
   }
 
-  .mobile-workout-list .workout-chip {
-    min-height: 44px;
-    padding: 7px 9px;
+  .mobile-agenda-workouts .workout-chip {
+    min-height: 48px;
+    padding: 8px 10px;
   }
 
-  .mobile-workout-list .workout-chip-title {
+  .mobile-agenda-workouts .workout-chip-title {
     font-size: 14px !important;
     white-space: normal;
   }
 
-  .mobile-workout-list .workout-chip-distance {
+  .mobile-agenda-workouts .workout-chip-distance {
     font-size: 12px;
   }
 
-  .mobile-calendar-empty {
+  .mobile-agenda-empty {
     color: var(--text-muted);
     font-size: 13px;
     margin: 0;
-    padding: 8px 12px 12px;
   }
 
   .calendar-header {
