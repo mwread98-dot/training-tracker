@@ -482,8 +482,7 @@ input, select, textarea {
   min-width: 0;
 }
 
-.availability-legend,
-.progress-legend {
+.availability-legend {
   display: flex;
   gap: 14px;
   align-items: center;
@@ -499,11 +498,9 @@ input, select, textarea {
   padding-top: 18px;
 }
 
-.chart-scroll {
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  padding: 0 0 8px;
-  -webkit-overflow-scrolling: touch;
+.progress-chart {
+  height: 220px;
+  width: 100%;
 }
 
 .empty-state {
@@ -1014,20 +1011,8 @@ input, select, textarea {
     margin-top: 20px;
   }
 
-  .progress-legend {
-    gap: 12px;
-  }
-
-  .chart-scroll {
-    margin: 0 -4px;
-  }
-
-  .chart-scroll::after {
-    color: var(--text-muted);
-    content: "Swipe to view all weeks";
-    display: block;
-    font-size: 12px;
-    margin: 4px 4px 0;
+  .progress-chart {
+    height: 190px;
   }
 
   .row {

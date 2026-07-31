@@ -525,14 +525,14 @@ export default function CalendarGrid({
     ...chartVisiblePoints.map((point) => point.value)
   ) * 1.1;
 
-  const chartSvgHeight = 280;
+  const chartSvgHeight = 220;
   const chartTop = 18;
   const chartBottom = 46;
   const chartLeft = 10;
   const chartRight = 70;
-  const chartGap = 54;
+  const chartGap = 44;
   const chartPlotHeight = chartSvgHeight - chartTop - chartBottom;
-  const chartSvgWidth = Math.max(900, chartLeft + chartRight + Math.max(0, chartVisiblePoints.length - 1) * chartGap);
+  const chartSvgWidth = Math.max(360, chartLeft + chartRight + Math.max(0, chartVisiblePoints.length - 1) * chartGap);
   const chartBaselineY = chartTop + chartPlotHeight;
   const chartX = (index: number) => chartLeft + index * chartGap;
   const chartY = (value: number) => chartTop + chartPlotHeight - (value / chartMaxValue) * chartPlotHeight;
@@ -802,24 +802,13 @@ export default function CalendarGrid({
           <MetricToggle value={chartMetric} onChange={setChartMetric} />
         </div>
 
-        <div className="progress-legend">
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <span style={{ width: 10, height: 10, borderRadius: 999, background: "#f59e0b", display: "inline-block" }} />
-            Planned
-          </span>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <span style={{ width: 10, height: 10, borderRadius: 999, background: "#3002fc", display: "inline-block" }} />
-            Actual
-          </span>
-        </div>
-
-        <div className="chart-scroll" aria-label="Scrollable weekly progress chart">
+        <div className="progress-chart" aria-label="Weekly progress chart">
           <svg
-            width={chartSvgWidth}
-            height={chartSvgHeight}
+            viewBox={`0 0 ${chartSvgWidth} ${chartSvgHeight}`}
+            preserveAspectRatio="none"
             role="img"
             aria-label={`Weekly progress chart showing ${chartMetric === "km" ? "distance" : "time"}: actual for past and current weeks, planned for future weeks`}
-            style={{ display: "block", minWidth: 900 }}
+            style={{ display: "block", width: "100%", height: "100%" }}
           >
             {[0, 0.5, 1].map((tick) => {
               const tickValue = chartMaxValue * tick;

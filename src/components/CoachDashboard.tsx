@@ -342,9 +342,6 @@ export default function CoachDashboard() {
                 setFormState({ open: true, date: w.date, existing: full });
               }}
             />
-            <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 12 }}>
-              Planned sessions and every synced Strava activity appear here. Open any date to switch between the planned view and the completed activities recorded that day. The colored dot on a date shows the athlete's self-reported availability.
-            </p>
           </div>
         ) : (
           <div className="empty-state">Add an athlete to start planning their training.</div>
