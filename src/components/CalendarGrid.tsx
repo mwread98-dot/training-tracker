@@ -122,7 +122,10 @@ function isWorkoutCompleted(workout: CalendarWorkout) {
 function isRunWorkout(workout: CalendarWorkout) {
   const type = workout.type?.toLowerCase() ?? "";
   const title = workout.title.toLowerCase();
-  return type.includes("run") || title.includes("run");
+  // Races are running sessions too, but their schema type is `race` rather
+  // than `run`. Keep the title fallback for legacy records that predate the
+  // typed workout field.
+  return type === "race" || type.includes("run") || title.includes("run") || title.includes("race");
 }
 
 function plannedDistance(workout: CalendarWorkout) {
