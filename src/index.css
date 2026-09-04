@@ -499,6 +499,97 @@ input, select, textarea {
   flex-wrap: wrap;
 }
 
+.goal-race-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.goal-race-panel--empty {
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.goal-race-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.goal-race-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.goal-race-name {
+  font-family: var(--font-display);
+  font-size: 18px;
+}
+
+.goal-race-date {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.goal-race-edit {
+  align-self: flex-start;
+  padding-left: 0;
+}
+
+.goal-race-countdown {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 2px;
+  padding: 10px 20px;
+  border-radius: 12px;
+  background: var(--accent-soft);
+  min-width: 140px;
+}
+
+.goal-race-countdown strong {
+  font-family: var(--font-display);
+  font-size: 20px;
+  color: var(--accent-dark);
+  white-space: nowrap;
+}
+
+.goal-race-countdown span {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.goal-race-panel--race-week .goal-race-countdown,
+.goal-race-panel--today .goal-race-countdown {
+  background: var(--warn-soft);
+}
+
+.goal-race-panel--race-week .goal-race-countdown strong,
+.goal-race-panel--today .goal-race-countdown strong {
+  color: var(--warn);
+}
+
+.goal-race-panel--past .goal-race-countdown {
+  background: #f1efe6;
+}
+
+.goal-race-panel--past .goal-race-countdown strong {
+  color: var(--text-muted);
+}
+
+.goal-race-form {
+  width: 100%;
+}
+
 .progress-section {
   margin-top: 24px;
   border-top: 1px solid var(--border);
@@ -1120,6 +1211,18 @@ input, select, textarea {
 
   .copied-workout-banner .btn-text {
     flex: 0 0 auto;
+  }
+
+  .goal-race-panel {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding-bottom: 16px;
+  }
+
+  .goal-race-countdown {
+    width: 100%;
   }
 
   .progress-section {
