@@ -5,10 +5,12 @@ import type { Schema } from "../../amplify/data/resource";
 import CalendarGrid, { type CalendarWorkout, type DayAvailability } from "./CalendarGrid";
 import WorkoutDetail from "./WorkoutDetail";
 import AvailabilityForm from "./AvailabilityForm";
+import GoalRacePanel from "./GoalRacePanel";
 
 const client = generateClient<Schema>();
 type Workout = Schema["Workout"]["type"];
 type Availability = Schema["Availability"]["type"];
+type Profile = Schema["Profile"]["type"];
 
 const POLL_MS = 20000;
 const STRAVA_CLIENT_ID = (import.meta as any).env?.VITE_STRAVA_CLIENT_ID ?? "";
@@ -35,6 +37,7 @@ function sortWorkouts(items: Workout[]) {
 export default function AthleteCalendar() {
   const [email, setEmail] = useState<string | null>(null);
   const [idToken, setIdToken] = useState<string | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [availabilityRecords, setAvailabilityRecords] = useState<Availability[]>([]);
   const [editingAvailabilityDate, setEditingAvailabilityDate] = useState<string | null>(null);
@@ -108,6 +111,25 @@ export default function AthleteCalendar() {
       }
     })();
   }, [email, idToken, stravaStatus]);
+
+  const loadProfile = useCallback(async () => {
+    if (!email || !idToken) return;
+    const { data, errors } = await client.models.Profile.get(
+      { email },
+      { authMode: "userPool", authToken: idToken }
+    );
+    if (errors?.length) {
+      console.error("Failed to load profile", errors);
+      return;
+    }
+    setProfile(data);
+  }, [email, idToken]);
+
+  useEffect(() => {
+    loadProfile();
+    const interval = setInterval(loadProfile, POLL_MS);
+    return () => clearInterval(interval);
+  }, [loadProfile]);
 
   const loadWorkouts = useCallback(async () => {
     if (!email || !idToken) return;
@@ -294,6 +316,7 @@ export default function AthleteCalendar() {
       </div>
 
       <div className="card">
+        <GoalRacePanel goalRaceName={profile?.goalRaceName} goalRaceDate={profile?.goalRaceDate} />
         <CalendarGrid
           year={year}
           month={month}

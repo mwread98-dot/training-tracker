@@ -9,6 +9,8 @@ const schema = a
         email: a.string().required(),
         name: a.string().required(),
         notes: a.string(),
+        goalRaceName: a.string(),
+        goalRaceDate: a.date(),
       })
       .identifier(["email"])
       .authorization((allow) => [

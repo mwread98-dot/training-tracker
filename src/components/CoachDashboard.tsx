@@ -3,6 +3,7 @@ import { generateClient } from "aws-amplify/data";
 import type { Schema } from "../../amplify/data/resource";
 import CalendarGrid, { type CalendarWorkout, type DayAvailability } from "./CalendarGrid";
 import WorkoutForm from "./WorkoutForm";
+import GoalRacePanel from "./GoalRacePanel";
 
 const client = generateClient<Schema>();
 type Profile = Schema["Profile"]["type"];
@@ -229,6 +230,45 @@ export default function CoachDashboard() {
     }
   }
 
+  async function refreshSelectedProfile(email: string) {
+    const { data, errors } = await client.models.Profile.get({ email });
+    if (errors?.length || !data) return;
+    setAthletes((prev) => prev.map((a) => (a.email === email ? data : a)));
+    setSelected((prev) => (prev && prev.email === email ? data : prev));
+  }
+
+  async function handleSaveGoalRace({ goalRaceName, goalRaceDate }: { goalRaceName: string; goalRaceDate: string }) {
+    if (!selected) return;
+    setError(null);
+    const { errors } = await client.models.Profile.update({
+      email: selected.email,
+      goalRaceName: goalRaceName || null,
+      goalRaceDate,
+    });
+    if (errors?.length) {
+      console.error("Failed to save goal race", errors);
+      setError("Could not save the goal race.");
+      return;
+    }
+    await refreshSelectedProfile(selected.email);
+  }
+
+  async function handleClearGoalRace() {
+    if (!selected) return;
+    setError(null);
+    const { errors } = await client.models.Profile.update({
+      email: selected.email,
+      goalRaceName: null,
+      goalRaceDate: null,
+    });
+    if (errors?.length) {
+      console.error("Failed to remove the goal race", errors);
+      setError("Could not remove the goal race.");
+      return;
+    }
+    await refreshSelectedProfile(selected.email);
+  }
+
   const calendarWorkouts: CalendarWorkout[] = useMemo(
     () =>
       workouts.map((w) => ({
@@ -346,6 +386,13 @@ export default function CoachDashboard() {
         )}
         {selected ? (
           <div className="card">
+            <GoalRacePanel
+              goalRaceName={selected.goalRaceName}
+              goalRaceDate={selected.goalRaceDate}
+              editable
+              onSave={handleSaveGoalRace}
+              onClear={handleClearGoalRace}
+            />
             <CalendarGrid
               year={year}
               month={month}
