@@ -12,6 +12,7 @@ type Props = {
   completedActivitiesOnDate?: Workout[];
   athleteAvailability?: { status: DayAvailability; note?: string | null } | null;
   copiedWorkout?: Workout | null;
+  saveError?: string | null;
   onCopyWorkout?: () => void;
   onSave: (data: Partial<Workout> & { date: string; title: string }) => void;
   onDelete?: () => void;
@@ -197,6 +198,7 @@ export default function WorkoutForm({
   completedActivitiesOnDate = [],
   athleteAvailability,
   copiedWorkout,
+  saveError,
   onCopyWorkout,
   onSave,
   onDelete,
@@ -604,6 +606,23 @@ export default function WorkoutForm({
                 placeholder="Not shown prominently to athlete — for your own reference"
               />
             </div>
+
+            {saveError && (
+              <p
+                role="alert"
+                style={{
+                  background: "#fef3f2",
+                  border: "1px solid #fda29b",
+                  color: "#b42318",
+                  borderRadius: 8,
+                  padding: "10px 12px",
+                  fontSize: 13,
+                  marginBottom: 12,
+                }}
+              >
+                {saveError}
+              </p>
+            )}
 
             <div className="modal-actions">
               <div style={{ display: "flex", gap: 12 }}>

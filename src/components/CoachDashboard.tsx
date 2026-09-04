@@ -4,6 +4,7 @@ import type { Schema } from "../../amplify/data/resource";
 import CalendarGrid, { type CalendarWorkout, type DayAvailability } from "./CalendarGrid";
 import WorkoutForm from "./WorkoutForm";
 import GoalRacePanel from "./GoalRacePanel";
+import { listAllPages } from "../listAllPages";
 
 const client = generateClient<Schema>();
 type Profile = Schema["Profile"]["type"];
@@ -43,7 +44,7 @@ export default function CoachDashboard() {
   const [copiedWorkout, setCopiedWorkout] = useState<Workout | null>(null);
 
   const loadAthletes = useCallback(async () => {
-    const { data, errors } = await client.models.Profile.list();
+    const { data, errors } = await listAllPages<Profile>((options) => client.models.Profile.list(options));
     if (errors?.length) {
       console.error("Failed to load athletes", errors);
       setError("Could not load athletes.");
@@ -60,9 +61,9 @@ export default function CoachDashboard() {
 
   const loadWorkouts = useCallback(async (athleteEmail: string) => {
     const requestId = ++workoutsRequestId.current;
-    const { data, errors } = await client.models.Workout.list({
-      filter: { athleteEmail: { eq: athleteEmail } },
-    });
+    const { data, errors } = await listAllPages<Workout>((options) =>
+      client.models.Workout.list({ filter: { athleteEmail: { eq: athleteEmail } }, ...options })
+    );
     if (requestId !== workoutsRequestId.current) return;
     if (errors?.length) {
       console.error("Failed to load workouts", errors);
@@ -90,9 +91,9 @@ export default function CoachDashboard() {
 
   const loadAvailability = useCallback(async (athleteEmail: string) => {
     const requestId = ++availabilityRequestId.current;
-    const { data, errors } = await client.models.Availability.list({
-      filter: { athleteEmail: { eq: athleteEmail } },
-    });
+    const { data, errors } = await listAllPages<Availability>((options) =>
+      client.models.Availability.list({ filter: { athleteEmail: { eq: athleteEmail } }, ...options })
+    );
     if (requestId !== availabilityRequestId.current) return;
     if (errors?.length) {
       console.error("Failed to load availability", errors);
@@ -468,6 +469,7 @@ export default function CoachDashboard() {
           completedActivitiesOnDate={completedActivitiesOnDate}
           athleteAvailability={availabilityForFormDate}
           copiedWorkout={copiedWorkout}
+          saveError={error}
           onCopyWorkout={copyWorkout}
           onSave={saveWorkout}
           onDelete={formState.existing ? deleteWorkout : undefined}

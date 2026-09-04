@@ -6,6 +6,7 @@ import CalendarGrid, { type CalendarWorkout, type DayAvailability } from "./Cale
 import WorkoutDetail from "./WorkoutDetail";
 import AvailabilityForm from "./AvailabilityForm";
 import GoalRacePanel from "./GoalRacePanel";
+import { listAllPages } from "../listAllPages";
 
 const client = generateClient<Schema>();
 type Workout = Schema["Workout"]["type"];
@@ -133,11 +134,14 @@ export default function AthleteCalendar() {
 
   const loadWorkouts = useCallback(async () => {
     if (!email || !idToken) return;
-    const { data: items, errors } = await client.models.Workout.list({
-      filter: { athleteEmail: { eq: email } },
-      authMode: "userPool",
-      authToken: idToken,
-    });
+    const { data: items, errors } = await listAllPages<Workout>((options) =>
+      client.models.Workout.list({
+        filter: { athleteEmail: { eq: email } },
+        authMode: "userPool",
+        authToken: idToken,
+        ...options,
+      })
+    );
     if (errors?.length) {
       console.error("Failed to load athlete workouts", errors);
       return;
@@ -153,11 +157,14 @@ export default function AthleteCalendar() {
 
   const loadAvailability = useCallback(async () => {
     if (!email || !idToken) return;
-    const { data: items, errors } = await client.models.Availability.list({
-      filter: { athleteEmail: { eq: email } },
-      authMode: "userPool",
-      authToken: idToken,
-    });
+    const { data: items, errors } = await listAllPages<Availability>((options) =>
+      client.models.Availability.list({
+        filter: { athleteEmail: { eq: email } },
+        authMode: "userPool",
+        authToken: idToken,
+        ...options,
+      })
+    );
     if (errors?.length) {
       console.error("Failed to load availability", errors);
       return;
