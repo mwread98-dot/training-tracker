@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "../../amplify/data/resource";
 import CalendarGrid, { type CalendarWorkout, type DayAvailability } from "./CalendarGrid";
@@ -52,10 +52,17 @@ export default function CoachDashboard() {
     setSelected((prev) => prev ?? data[0] ?? null);
   }, []);
 
+  // Guards against the 20s poll and a post-save reload resolving out of order —
+  // without this, a slower in-flight poll response can land after a save and
+  // overwrite the fresh data with stale data, making a successful save look lost.
+  const workoutsRequestId = useRef(0);
+
   const loadWorkouts = useCallback(async (athleteEmail: string) => {
+    const requestId = ++workoutsRequestId.current;
     const { data, errors } = await client.models.Workout.list({
       filter: { athleteEmail: { eq: athleteEmail } },
     });
+    if (requestId !== workoutsRequestId.current) return;
     if (errors?.length) {
       console.error("Failed to load workouts", errors);
       setError("Could not load workouts.");
@@ -78,10 +85,14 @@ export default function CoachDashboard() {
     return () => clearInterval(interval);
   }, [selected, loadWorkouts]);
 
+  const availabilityRequestId = useRef(0);
+
   const loadAvailability = useCallback(async (athleteEmail: string) => {
+    const requestId = ++availabilityRequestId.current;
     const { data, errors } = await client.models.Availability.list({
       filter: { athleteEmail: { eq: athleteEmail } },
     });
+    if (requestId !== availabilityRequestId.current) return;
     if (errors?.length) {
       console.error("Failed to load availability", errors);
       return;
@@ -130,50 +141,59 @@ export default function CoachDashboard() {
   async function saveWorkout(data: Partial<Workout> & { date: string; title: string }) {
     setError(null);
 
-    if (formState.open && formState.existing) {
-      const { errors } = await client.models.Workout.update({
-        entryId: formState.existing.entryId,
-        athleteEmail: formState.existing.athleteEmail,
-        date: data.date,
-        athleteName: data.athleteName,
-        source: data.source,
-        type: data.type,
-        intensity: data.intensity,
-        title: data.title,
-        description: data.description,
-        distanceKm: data.distanceKm,
-        durationMin: data.durationMin,
-        targetPace: data.targetPace,
-        coachNotes: data.coachNotes,
-      });
-      if (errors?.length) {
-        console.error("Failed to update workout", errors);
-        setError("Could not save this workout.");
-        return;
+    try {
+      if (formState.open && formState.existing) {
+        const { errors } = await client.models.Workout.update({
+          entryId: formState.existing.entryId,
+          athleteEmail: formState.existing.athleteEmail,
+          date: data.date,
+          athleteName: data.athleteName,
+          source: data.source,
+          type: data.type,
+          intensity: data.intensity,
+          title: data.title,
+          description: data.description,
+          distanceKm: data.distanceKm,
+          durationMin: data.durationMin,
+          targetPace: data.targetPace,
+          coachNotes: data.coachNotes,
+        });
+        if (errors?.length) {
+          console.error("Failed to update workout", errors);
+          setError("Could not save this workout.");
+          return;
+        }
+      } else {
+        const createInput = {
+          entryId: generateEntryId(),
+          athleteEmail: data.athleteEmail!,
+          athleteName: data.athleteName,
+          date: data.date,
+          source: data.source ?? "coach",
+          type: data.type,
+          intensity: data.intensity,
+          title: data.title,
+          description: data.description,
+          distanceKm: data.distanceKm,
+          durationMin: data.durationMin,
+          targetPace: data.targetPace,
+          coachNotes: data.coachNotes,
+          completed: false,
+        };
+        const { errors } = await client.models.Workout.create(createInput as any);
+        if (errors?.length) {
+          console.error("Failed to create workout", errors);
+          setError("Could not create this workout.");
+          return;
+        }
       }
-    } else {
-      const createInput = {
-        entryId: generateEntryId(),
-        athleteEmail: data.athleteEmail!,
-        athleteName: data.athleteName,
-        date: data.date,
-        source: data.source ?? "coach",
-        type: data.type,
-        intensity: data.intensity,
-        title: data.title,
-        description: data.description,
-        distanceKm: data.distanceKm,
-        durationMin: data.durationMin,
-        targetPace: data.targetPace,
-        coachNotes: data.coachNotes,
-        completed: false,
-      };
-      const { errors } = await client.models.Workout.create(createInput as any);
-      if (errors?.length) {
-        console.error("Failed to create workout", errors);
-        setError("Could not create this workout.");
-        return;
-      }
+    } catch (err) {
+      // A thrown (rather than returned) error usually means the request never
+      // reached the server — e.g. a dropped connection or an auth token
+      // refresh that failed mid-request. Surface it instead of failing silently.
+      console.error("Failed to save workout", err);
+      setError("Could not save this workout — check your connection and try again.");
+      return;
     }
 
     setFormState({ open: false });
@@ -185,10 +205,16 @@ export default function CoachDashboard() {
   async function deleteWorkout() {
     if (!(formState.open && formState.existing)) return;
     setError(null);
-    const { errors } = await client.models.Workout.delete({ entryId: formState.existing.entryId });
-    if (errors?.length) {
-      console.error("Failed to delete workout", errors);
-      setError("Could not delete this workout.");
+    try {
+      const { errors } = await client.models.Workout.delete({ entryId: formState.existing.entryId });
+      if (errors?.length) {
+        console.error("Failed to delete workout", errors);
+        setError("Could not delete this workout.");
+        return;
+      }
+    } catch (err) {
+      console.error("Failed to delete workout", err);
+      setError("Could not delete this workout — check your connection and try again.");
       return;
     }
     setFormState({ open: false });
