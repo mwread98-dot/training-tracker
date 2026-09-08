@@ -1,6 +1,14 @@
 import { useEffect, useState } from "react";
 import type { Schema } from "../../amplify/data/resource";
 import type { DayAvailability } from "./CalendarGrid";
+import TimeField from "./TimeField";
+import {
+  digitsFromFormatted,
+  digitsToMinutes,
+  minutesToDigits,
+  minutesToTimeString,
+  normalizeDigits,
+} from "../timeInput";
 
 type Workout = Schema["Workout"]["type"];
 
@@ -59,63 +67,21 @@ function fmtDuration(totalMin: number | null | undefined) {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
-type TimeInputKind = "duration" | "pace";
+type CalcField = "distance" | "duration";
 
-// Keep the value the user is typing intact. Unlike the old stopwatch-style mask,
-// colons and digits are entered from left to right and zeros are only added after blur.
-function sanitizeTimeInput(value: string, kind: TimeInputKind) {
-  const cleaned = value.replace(/[^\d:]/g, "");
-  const maxParts = kind === "duration" ? 3 : 2;
-  return cleaned.split(":").slice(0, maxParts).join(":").slice(0, kind === "duration" ? 8 : 5);
+// A saved workout already has distance, duration and pace agreeing with each other, so
+// pick the value the coach most likely wants held fixed while they retune the pace: the
+// distance if the session has one, otherwise the duration.
+function initialDriver(distance: string, durationDigits: string): CalcField | null {
+  if (parseFloat(distance) > 0) return "distance";
+  if (digitsToMinutes(durationDigits)) return "duration";
+  return null;
 }
 
-function timeInputToMinutes(value: string, kind: TimeInputKind): number | null {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  const parts = trimmed.split(":");
-  if (parts.some((part) => part !== "" && !/^\d+$/.test(part))) return null;
-  if (parts.length > (kind === "duration" ? 3 : 2)) return null;
-
-  const numbers = parts.map((part) => (part === "" ? 0 : Number(part)));
-  if (numbers.some((part) => !Number.isFinite(part))) return null;
-
-  let hours = 0;
-  let minutes = 0;
-  let seconds = 0;
-  if (parts.length === 3) {
-    [hours, minutes, seconds] = numbers;
-    if (minutes > 59 || seconds > 59) return null;
-  } else if (parts.length === 2) {
-    [minutes, seconds] = numbers;
-    if (seconds > 59) return null;
-  } else {
-    [minutes] = numbers;
-  }
-
-  const total = hours * 60 + minutes + seconds / 60;
-  return total > 0 ? total : null;
+function formatDistance(km: number) {
+  return String(Math.round(km * 100) / 100);
 }
 
-function minutesToTimeInput(totalMin: number | null | undefined, kind: TimeInputKind): string {
-  if (!totalMin || totalMin <= 0) return "";
-  const totalSeconds = Math.round(totalMin * 60);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-
-  if (kind === "duration" && hours > 0) {
-    return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-  }
-
-  const totalMinutes = kind === "pace" ? Math.floor(totalSeconds / 60) : minutes;
-  return `${totalMinutes}:${String(seconds).padStart(2, "0")}`;
-}
-
-function normalizeTimeInput(value: string, kind: TimeInputKind) {
-  return minutesToTimeInput(timeInputToMinutes(value, kind), kind);
-}
-
-type CalcField = "distance" | "duration" | "pace";
 
 function statText(label: string, value: string | null | undefined) {
   return value ? `${label}: ${value}` : null;
@@ -216,84 +182,101 @@ export default function WorkoutForm({
   const [intensity, setIntensity] = useState<string>(initialIntensity);
   const [title, setTitle] = useState(existing?.title ?? "");
   const [description, setDescription] = useState(isStravaAutoCreated ? "" : existing?.description ?? "");
-  const [distanceKm, setDistanceKm] = useState(isStravaAutoCreated ? "" : existing?.distanceKm?.toString() ?? "");
-  const [durationInput, setDurationInput] = useState(
-    isStravaAutoCreated ? "" : minutesToTimeInput(existing?.durationMin, "duration")
-  );
-  const [paceInput, setPaceInput] = useState(existing?.targetPace ?? "");
+  const initialDistance = isStravaAutoCreated ? "" : existing?.distanceKm?.toString() ?? "";
+  const initialDurationDigits = isStravaAutoCreated ? "" : minutesToDigits(existing?.durationMin, "duration");
+
+  const [distanceKm, setDistanceKm] = useState(initialDistance);
+  const [durationDigits, setDurationDigits] = useState(initialDurationDigits);
+  const [paceDigits, setPaceDigits] = useState(digitsFromFormatted(existing?.targetPace, "pace"));
   const [coachNotes, setCoachNotes] = useState(existing?.coachNotes ?? "");
 
-  // Tracks the last two distinct fields (of distance/duration/pace) the coach has typed into
-  // during this session, so the one remaining field can be auto-calculated from those two.
-  const [manualOrder, setManualOrder] = useState<CalcField[]>([]);
+  // Pace is the field the coach always fills in, so it anchors the other two: whichever of
+  // distance/duration was typed into last drives the session and the other one is derived
+  // from it. Typing into the derived field hands the driving role over to it.
+  const [driver, setDriver] = useState<CalcField | null>(initialDriver(initialDistance, initialDurationDigits));
   const [calculatedField, setCalculatedField] = useState<CalcField | null>(null);
 
-  const durationMinValue = timeInputToMinutes(durationInput, "duration");
-  const paceMinValue = timeInputToMinutes(paceInput, "pace");
+  const durationMinValue = digitsToMinutes(durationDigits);
+  const paceMinValue = digitsToMinutes(paceDigits);
   const distanceValue = (() => {
     const v = parseFloat(distanceKm);
     return Number.isFinite(v) ? v : null;
   })();
 
-  function applyFieldInput(field: CalcField, values: { distance: number | null; duration: number | null; pace: number | null }) {
-    const nextOrder = [...manualOrder.filter((f) => f !== field), field].slice(-2) as CalcField[];
-    setManualOrder(nextOrder);
-
-    if (nextOrder.length === 2) {
-      const target = (["distance", "duration", "pace"] as CalcField[]).find((f) => !nextOrder.includes(f))!;
-      const have = (f: CalcField) => (f === "distance" ? values.distance : f === "duration" ? values.duration : values.pace);
-      const a = have(nextOrder[0]);
-      const b = have(nextOrder[1]);
-
-      if (a != null && a > 0 && b != null && b > 0) {
-        if (target === "pace") {
-          const durationV = values.duration!;
-          const distanceV = values.distance!;
-          setPaceInput(minutesToTimeInput(durationV / distanceV, "pace"));
-        } else if (target === "duration") {
-          const distanceV = values.distance!;
-          const paceV = values.pace!;
-          setDurationInput(minutesToTimeInput(distanceV * paceV, "duration"));
-        } else if (target === "distance") {
-          const durationV = values.duration!;
-          const paceV = values.pace!;
-          setDistanceKm((durationV / paceV).toFixed(2));
-        }
-        setCalculatedField(target);
-      }
+  // Rebuilds whichever of distance/duration the coach is not driving. It takes the values
+  // explicitly because the state setters that produced them have not flushed yet.
+  function recalculate(next: {
+    driver: CalcField | null;
+    distance: number | null;
+    duration: number | null;
+    pace: number | null;
+  }) {
+    if (!next.pace || !next.driver) {
+      setCalculatedField(null);
+      return;
     }
+
+    if (next.driver === "distance") {
+      if (!next.distance) {
+        // The value doing the driving is gone, so anything derived from it is stale.
+        if (calculatedField === "duration") setDurationDigits("");
+        setCalculatedField(null);
+        return;
+      }
+      setDurationDigits(minutesToDigits(next.distance * next.pace, "duration"));
+      setCalculatedField("duration");
+      return;
+    }
+
+    if (!next.duration) {
+      if (calculatedField === "distance") setDistanceKm("");
+      setCalculatedField(null);
+      return;
+    }
+    setDistanceKm(formatDistance(next.duration / next.pace));
+    setCalculatedField("distance");
   }
 
   function handleDistanceChange(raw: string) {
     setDistanceKm(raw);
-    const v = parseFloat(raw);
-    applyFieldInput("distance", {
-      distance: Number.isFinite(v) && v > 0 ? v : null,
+    setDriver("distance");
+    const parsed = parseFloat(raw);
+    recalculate({
+      driver: "distance",
+      distance: Number.isFinite(parsed) && parsed > 0 ? parsed : null,
       duration: durationMinValue,
       pace: paceMinValue,
     });
   }
 
-  function handleDurationChange(raw: string) {
-    const nextValue = sanitizeTimeInput(raw, "duration");
-    setDurationInput(nextValue);
-    const v = timeInputToMinutes(nextValue, "duration");
-    applyFieldInput("duration", {
+  function handleDurationChange(digits: string) {
+    setDurationDigits(digits);
+    setDriver("duration");
+    recalculate({
+      driver: "duration",
       distance: distanceValue,
-      duration: v && v > 0 ? v : null,
+      duration: digitsToMinutes(digits),
       pace: paceMinValue,
     });
   }
 
-  function handlePaceChange(raw: string) {
-    const nextValue = sanitizeTimeInput(raw, "pace");
-    setPaceInput(nextValue);
-    const v = timeInputToMinutes(nextValue, "pace");
-    applyFieldInput("pace", {
+  function handlePaceChange(digits: string) {
+    setPaceDigits(digits);
+    recalculate({
+      driver,
       distance: distanceValue,
       duration: durationMinValue,
-      pace: v && v > 0 ? v : null,
+      pace: digitsToMinutes(digits),
     });
+  }
+
+  // Only re-runs the calculation when blurring actually changed the value (an entry like
+  // "4:99" carrying up to "5:39"), so tabbing through a field never steals the driving role.
+  function handleTimeBlur(kind: "duration" | "pace", digits: string) {
+    const normalized = normalizeDigits(digits, kind);
+    if (normalized === digits) return;
+    if (kind === "duration") handleDurationChange(normalized);
+    else handlePaceChange(normalized);
   }
 
   const cfg = FIELD_CONFIG[type] ?? FIELD_CONFIG.run;
@@ -323,11 +306,13 @@ export default function WorkoutForm({
     }
     setTitle(copiedWorkout.title ?? "");
     setDescription(copiedWorkout.description ?? "");
-    setDistanceKm(copiedWorkout.distanceKm != null ? String(copiedWorkout.distanceKm) : "");
-    setDurationInput(minutesToTimeInput(copiedWorkout.durationMin, "duration"));
-    setPaceInput(copiedWorkout.targetPace ?? "");
+    const pastedDistance = copiedWorkout.distanceKm != null ? String(copiedWorkout.distanceKm) : "";
+    const pastedDurationDigits = minutesToDigits(copiedWorkout.durationMin, "duration");
+    setDistanceKm(pastedDistance);
+    setDurationDigits(pastedDurationDigits);
+    setPaceDigits(digitsFromFormatted(copiedWorkout.targetPace, "pace"));
     setCoachNotes(copiedWorkout.coachNotes ?? "");
-    setManualOrder([]);
+    setDriver(initialDriver(pastedDistance, pastedDurationDigits));
     setCalculatedField(null);
   }
 
@@ -349,7 +334,7 @@ export default function WorkoutForm({
       description: description.trim() || null,
       distanceKm: cfg.distance && distanceValue && distanceValue > 0 ? distanceValue : null,
       durationMin: cfg.duration && durationMinValue ? Math.round(durationMinValue * 100) / 100 : null,
-      targetPace: cfg.pace && paceMinValue ? minutesToTimeInput(paceMinValue, "pace") : null,
+      targetPace: cfg.pace && paceMinValue ? minutesToTimeString(paceMinValue, "pace") : null,
       coachNotes: coachNotes.trim() || null,
     });
   }
@@ -544,19 +529,18 @@ export default function WorkoutForm({
                       Duration
                       {calculatedField === "duration" && <span style={{ color: "var(--text-muted)", fontWeight: 400 }}> · calculated</span>}
                     </label>
-                    <input
+                    <TimeField
                       id="workout-duration"
-                      type="text"
-                      inputMode="text"
+                      kind="duration"
                       placeholder="h:mm:ss"
-                      value={durationInput}
-                      onChange={(e) => handleDurationChange(e.target.value)}
-                      onBlur={() => setDurationInput((value) => normalizeTimeInput(value, "duration"))}
-                      autoComplete="off"
-                      spellCheck={false}
-                      aria-describedby="workout-duration-hint"
+                      digits={durationDigits}
+                      onDigitsChange={handleDurationChange}
+                      onBlur={() => handleTimeBlur("duration", durationDigits)}
+                      describedBy="workout-duration-hint"
                     />
-                    <span id="workout-duration-hint" className="field-hint">Type left to right, for example 1:05:00.</span>
+                    <span id="workout-duration-hint" className="field-hint">
+                      Digits only — 4500 becomes 45:00, 10500 becomes 1:05:00.
+                    </span>
                   </div>
                 )}
               </div>
@@ -566,23 +550,19 @@ export default function WorkoutForm({
               <div className="row">
                 {cfg.pace && (
                   <div className="field">
-                    <label htmlFor="workout-pace">
-                      Target pace (min/km)
-                      {calculatedField === "pace" && <span style={{ color: "var(--text-muted)", fontWeight: 400 }}> · calculated</span>}
-                    </label>
-                    <input
+                    <label htmlFor="workout-pace">Target pace (min/km)</label>
+                    <TimeField
                       id="workout-pace"
-                      type="text"
-                      inputMode="text"
+                      kind="pace"
                       placeholder="m:ss"
-                      value={paceInput}
-                      onChange={(e) => handlePaceChange(e.target.value)}
-                      onBlur={() => setPaceInput((value) => normalizeTimeInput(value, "pace"))}
-                      autoComplete="off"
-                      spellCheck={false}
-                      aria-describedby="workout-pace-hint"
+                      digits={paceDigits}
+                      onDigitsChange={handlePaceChange}
+                      onBlur={() => handleTimeBlur("pace", paceDigits)}
+                      describedBy="workout-pace-hint"
                     />
-                    <span id="workout-pace-hint" className="field-hint">Type left to right, for example 4:30.</span>
+                    <span id="workout-pace-hint" className="field-hint">
+                      Digits only — 430 becomes 4:30.
+                    </span>
                   </div>
                 )}
                 {cfg.intensity && (
