@@ -313,17 +313,24 @@ export default function CalendarGrid({
   const [selectedChartWeekIso, setSelectedChartWeekIso] = useState<string | null>(null);
   const [selectedMobileDate, setSelectedMobileDate] = useState<string | null>(null);
   const chartContainerRef = useRef<HTMLDivElement>(null);
-  const [chartWidth, setChartWidth] = useState(720);
+  const [chartSize, setChartSize] = useState({ width: 720, height: 220 });
 
   useEffect(() => {
     const element = chartContainerRef.current;
     if (!element) return;
-    const updateWidth = () => setChartWidth(Math.max(320, Math.round(element.clientWidth)));
-    const observer = new ResizeObserver(updateWidth);
+    const updateSize = () =>
+      setChartSize({
+        width: Math.max(1, Math.round(element.clientWidth)),
+        height: Math.max(1, Math.round(element.clientHeight)),
+      });
+    const observer = new ResizeObserver(updateSize);
     observer.observe(element);
-    updateWidth();
+    updateSize();
     return () => observer.disconnect();
   }, []);
+
+  const chartWidth = chartSize.width;
+  const chartHeight = chartSize.height;
 
   const byDate = useMemo(() => {
     const map: Record<string, CalendarWorkout[]> = {};
@@ -567,7 +574,9 @@ export default function CalendarGrid({
   const chartScaleStep = 10 ** Math.floor(Math.log10(rawChartMaxValue));
   const chartMaxValue = Math.ceil(rawChartMaxValue / chartScaleStep) * chartScaleStep;
 
-  const chartSvgHeight = 228;
+  // The viewBox has to match the rendered box: any mismatch is absorbed by scaling,
+  // which stretches text and strokes and makes the chart look blurry.
+  const chartSvgHeight = Math.max(120, chartHeight);
   const chartTop = 20;
   const chartBottom = 34;
   const chartLeft = 22;
@@ -915,7 +924,6 @@ export default function CalendarGrid({
         <div ref={chartContainerRef} className="progress-chart" aria-label="Weekly progress chart">
           <svg
             viewBox={`0 0 ${chartSvgWidth} ${chartSvgHeight}`}
-            preserveAspectRatio="none"
             role="img"
             aria-label={`Weekly progress chart showing ${chartMetric === "km" ? "distance" : "time"}: completed for past weeks, projected for the current week, and planned for future weeks`}
             style={{ display: "block", width: "100%", height: "100%" }}
