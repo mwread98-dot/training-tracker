@@ -6,7 +6,7 @@ type Workout = Schema["Workout"]["type"];
 type Props = {
   workout: Workout;
   completedActivitiesOnDate?: Workout[];
-  onSave: (data: { completed: boolean; athleteNotes?: string }) => void;
+  onSave: (data: { completed: boolean; athleteNotes: string | null }) => void;
   onClose: () => void;
 };
 
@@ -146,7 +146,7 @@ export default function WorkoutDetail({
   function handleSave() {
     onSave({
       completed: completionManagedByStrava ? true : completed,
-      athleteNotes: athleteNotes || undefined,
+      athleteNotes: athleteNotes.trim() || null,
     });
   }
 

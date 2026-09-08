@@ -318,11 +318,15 @@ export default function CalendarGrid({
   useEffect(() => {
     const element = chartContainerRef.current;
     if (!element) return;
-    const updateSize = () =>
-      setChartSize({
-        width: Math.max(1, Math.round(element.clientWidth)),
-        height: Math.max(1, Math.round(element.clientHeight)),
-      });
+    const updateSize = () => {
+      const width = Math.round(element.clientWidth);
+      const height = Math.round(element.clientHeight);
+      // The container measures 0 until the first layout pass. Adopting that
+      // leaves the plot area narrower than its own margins, so keep the last
+      // usable size until a real measurement arrives.
+      if (width <= 0 || height <= 0) return;
+      setChartSize({ width, height });
+    };
     const observer = new ResizeObserver(updateSize);
     observer.observe(element);
     updateSize();
@@ -476,19 +480,16 @@ export default function CalendarGrid({
           }
         }
       } else {
+        // Roll the current week up from the same per-day rule the progress chart
+        // and the mobile day cells use, so one week never shows two different
+        // "Projected" figures on the same screen. Repeating the rule by hand here
+        // missed the "a session is already logged today" case, which counts the
+        // day's logged distance rather than adding the unticked plan on top of it.
         label = "Projected";
         for (let j = i; j < i + 7; j++) {
-          const dayIso = cells[j].iso;
-          const dayWorkouts = byDate[dayIso] ?? [];
-          for (const w of dayWorkouts) {
-            if (dayIso < todayIso || isWorkoutCompleted(w)) {
-              km += completedDistance(w);
-              min += completedDuration(w);
-            } else {
-              km += plannedDistance(w);
-              min += plannedDuration(w);
-            }
-          }
+          const dayTotals = getDayTotals(cells[j].iso);
+          km += dayTotals.expectedKm;
+          min += dayTotals.expectedMin;
         }
       }
 
@@ -582,7 +583,9 @@ export default function CalendarGrid({
   const chartLeft = 22;
   const chartRight = 70;
   const chartSvgWidth = chartWidth;
-  const chartPlotWidth = chartSvgWidth - chartLeft - chartRight;
+  // Never let the axis margins exceed the box: a negative plot width flips the
+  // x-scale and emits invalid (negative) width attributes on the hit targets.
+  const chartPlotWidth = Math.max(1, chartSvgWidth - chartLeft - chartRight);
   const chartPlotHeight = chartSvgHeight - chartTop - chartBottom;
   const chartBaselineY = chartTop + chartPlotHeight;
   const chartX = (index: number) => chartLeft + (index / Math.max(1, chartDisplayedPoints.length - 1)) * chartPlotWidth;

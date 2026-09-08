@@ -349,7 +349,7 @@ export default function CoachDashboard() {
         <div className="athlete-list">
           {athletes.length === 0 && (
             <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
-              No athletes yet â€” add your first one.
+              No athletes yet — add your first one.
             </p>
           )}
           {athletes.map((a) => (
@@ -378,7 +378,7 @@ export default function CoachDashboard() {
             }}
           >
             <span>
-              ðŸ“‹ Copied <strong>{copiedWorkout.title}</strong> â€” open any empty day and choose "Paste copied workout" to reuse it.
+              📋 Copied <strong>{copiedWorkout.title}</strong> — open any empty day and choose "Paste copied workout" to reuse it.
             </span>
             <button className="btn-text" onClick={() => setCopiedWorkout(null)}>
               Clear
