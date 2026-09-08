@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { generateClient } from "aws-amplify/data";
 import { fetchAuthSession, fetchUserAttributes } from "aws-amplify/auth";
 import type { Schema } from "../../amplify/data/resource";
@@ -50,12 +50,21 @@ export default function AthleteCalendar() {
   >("unknown");
   const [stravaError, setStravaError] = useState<string | null>(null);
 
+  const [authError, setAuthError] = useState(false);
+
   useEffect(() => {
     (async () => {
-      const attrs = await fetchUserAttributes();
-      setEmail(attrs.email ?? null);
-      const session = await fetchAuthSession();
-      setIdToken(session.tokens?.idToken?.toString() ?? null);
+      try {
+        const attrs = await fetchUserAttributes();
+        const session = await fetchAuthSession();
+        setEmail(attrs.email ?? null);
+        setIdToken(session.tokens?.idToken?.toString() ?? null);
+      } catch (err) {
+        // Without these the loaders below all no-op, so the athlete would get a
+        // blank calendar with no explanation rather than an error.
+        console.error("Failed to load your account details", err);
+        setAuthError(true);
+      }
     })();
   }, []);
 
@@ -106,19 +115,27 @@ export default function AthleteCalendar() {
           { athleteEmail: email },
           { authMode: "userPool", authToken: idToken }
         );
-        setStravaStatus(result.data ? "connected" : "not_connected");
+        const next = result.data ? "connected" : "not_connected";
+        setStravaStatus((prev) => (prev === "unknown" ? next : prev));
       } catch {
-        setStravaStatus("not_connected");
+        setStravaStatus((prev) => (prev === "unknown" ? "not_connected" : prev));
       }
     })();
   }, [email, idToken, stravaStatus]);
 
+  // Guards against the 20s poll and a post-save reload resolving out of order —
+  // without this, a slower in-flight poll response can land after a save and
+  // overwrite the fresh data with stale data, making a successful save look lost.
+  const profileRequestId = useRef(0);
+
   const loadProfile = useCallback(async () => {
     if (!email || !idToken) return;
+    const requestId = ++profileRequestId.current;
     const { data, errors } = await client.models.Profile.get(
       { email },
       { authMode: "userPool", authToken: idToken }
     );
+    if (requestId !== profileRequestId.current) return;
     if (errors?.length) {
       console.error("Failed to load profile", errors);
       return;
@@ -132,8 +149,11 @@ export default function AthleteCalendar() {
     return () => clearInterval(interval);
   }, [loadProfile]);
 
+  const workoutsRequestId = useRef(0);
+
   const loadWorkouts = useCallback(async () => {
     if (!email || !idToken) return;
+    const requestId = ++workoutsRequestId.current;
     const { data: items, errors } = await listAllPages<Workout>((options) =>
       client.models.Workout.list({
         filter: { athleteEmail: { eq: email } },
@@ -142,6 +162,7 @@ export default function AthleteCalendar() {
         ...options,
       })
     );
+    if (requestId !== workoutsRequestId.current) return;
     if (errors?.length) {
       console.error("Failed to load athlete workouts", errors);
       return;
@@ -155,8 +176,11 @@ export default function AthleteCalendar() {
     return () => clearInterval(interval);
   }, [loadWorkouts]);
 
+  const availabilityRequestId = useRef(0);
+
   const loadAvailability = useCallback(async () => {
     if (!email || !idToken) return;
+    const requestId = ++availabilityRequestId.current;
     const { data: items, errors } = await listAllPages<Availability>((options) =>
       client.models.Availability.list({
         filter: { athleteEmail: { eq: email } },
@@ -165,6 +189,7 @@ export default function AthleteCalendar() {
         ...options,
       })
     );
+    if (requestId !== availabilityRequestId.current) return;
     if (errors?.length) {
       console.error("Failed to load availability", errors);
       return;
@@ -185,7 +210,7 @@ export default function AthleteCalendar() {
       athleteEmail: email,
       date: editingAvailabilityDate,
       status,
-      note: note || undefined,
+      note: note.trim() || null,
     };
     const { errors } = existing
       ? await client.models.Availability.update(payload, { authMode: "userPool", authToken: idToken })
@@ -212,7 +237,7 @@ export default function AthleteCalendar() {
     await loadAvailability();
   }
 
-  async function handleSave(data: { completed: boolean; athleteNotes?: string }) {
+  async function handleSave(data: { completed: boolean; athleteNotes: string | null }) {
     if (!selected || !idToken) return;
     const { errors } = await client.models.Workout.update(
       {
@@ -287,6 +312,15 @@ export default function AthleteCalendar() {
   }, [workouts, selected]);
 
   const monthHasEntries = workouts.some((w) => w.date.startsWith(`${year}-${String(month + 1).padStart(2, "0")}`));
+
+  if (authError) {
+    return (
+      <div className="empty-state">
+        <h2 style={{ marginBottom: 8 }}>Couldn't load your training</h2>
+        <p>Something went wrong reading your account. Refresh the page to try again.</p>
+      </div>
+    );
+  }
 
   return (
     <div>

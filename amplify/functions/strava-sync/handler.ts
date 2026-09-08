@@ -3,6 +3,7 @@ import { Amplify } from "aws-amplify";
 import { generateClient } from "aws-amplify/data";
 import { getAmplifyDataClientConfig } from "@aws-amplify/backend/function/runtime";
 import type { Schema } from "../../data/resource";
+import { listAllPages } from "./listAllPages";
 
 const env = process.env;
 let client: ReturnType<typeof generateClient<Schema>>;
@@ -26,6 +27,7 @@ type StravaActivity = {
 };
 
 type Workout = Schema["Workout"]["type"];
+type StravaToken = Schema["StravaToken"]["type"];
 
 function sportToType(sport: string): Workout["type"] {
   const s = sport.toLowerCase();
@@ -72,7 +74,7 @@ function buildStravaEntryId(activityId: string | number): string {
   return `strava-${activityId}`;
 }
 
-async function getFreshToken(token: Schema["StravaToken"]["type"]): Promise<string> {
+async function getFreshToken(token: StravaToken): Promise<string> {
   const nowSec = Math.floor(Date.now() / 1000);
   if (token.expiresAt > nowSec + 300) {
     return token.accessToken;
@@ -114,20 +116,38 @@ async function getFreshToken(token: Schema["StravaToken"]["type"]): Promise<stri
   return data.access_token;
 }
 
+const ACTIVITIES_PER_PAGE = 50;
+
+// Guards against an unbounded crawl if Strava ever keeps returning full pages.
+const MAX_ACTIVITY_PAGES = 10;
+
+// Strava pages this endpoint. The sweep then stamps lastSyncAt with "now", so
+// anything past the first page would never be looked at again — an athlete with
+// a busy backlog (or a first connect covering 30 days) would silently lose the
+// activities that did not fit on page one.
 async function fetchActivities(accessToken: string, afterTimestamp: number): Promise<StravaActivity[]> {
-  const url = new URL("https://www.strava.com/api/v3/athlete/activities");
-  url.searchParams.set("after", String(afterTimestamp));
-  url.searchParams.set("per_page", "50");
+  const activities: StravaActivity[] = [];
 
-  const res = await fetch(url.toString(), {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
+  for (let page = 1; page <= MAX_ACTIVITY_PAGES; page++) {
+    const url = new URL("https://www.strava.com/api/v3/athlete/activities");
+    url.searchParams.set("after", String(afterTimestamp));
+    url.searchParams.set("per_page", String(ACTIVITIES_PER_PAGE));
+    url.searchParams.set("page", String(page));
 
-  if (!res.ok) {
-    throw new Error(`Strava activities fetch failed: ${await res.text()}`);
+    const res = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!res.ok) {
+      throw new Error(`Strava activities fetch failed: ${await res.text()}`);
+    }
+
+    const batch = (await res.json()) as StravaActivity[];
+    activities.push(...batch);
+    if (batch.length < ACTIVITIES_PER_PAGE) break;
   }
 
-  return res.json() as Promise<StravaActivity[]>;
+  return activities;
 }
 
 async function fetchSingleActivity(accessToken: string, activityId: string): Promise<StravaActivity> {
@@ -143,11 +163,14 @@ async function fetchSingleActivity(accessToken: string, activityId: string): Pro
 }
 
 async function findTokenByStravaAthleteId(stravaAthleteId: string) {
-  const { data, errors } = await client.models.StravaToken.list({
-    filter: {
-      stravaAthleteId: { eq: String(stravaAthleteId) },
-    },
-  });
+  const { data, errors } = await listAllPages<StravaToken>((options) =>
+    client.models.StravaToken.list({
+      filter: {
+        stravaAthleteId: { eq: String(stravaAthleteId) },
+      },
+      ...options,
+    })
+  );
 
   if (errors) {
     console.error("Error finding token by Strava Athlete ID:", errors);
@@ -158,11 +181,14 @@ async function findTokenByStravaAthleteId(stravaAthleteId: string) {
 }
 
 async function findWorkoutByStravaActivityId(stravaActivityId: string) {
-  const { data, errors } = await client.models.Workout.list({
-    filter: {
-      stravaActivityId: { eq: String(stravaActivityId) },
-    },
-  });
+  const { data, errors } = await listAllPages<Workout>((options) =>
+    client.models.Workout.list({
+      filter: {
+        stravaActivityId: { eq: String(stravaActivityId) },
+      },
+      ...options,
+    })
+  );
 
   if (errors) {
     console.error("Error locating workout by Strava Activity ID:", errors);
@@ -173,12 +199,15 @@ async function findWorkoutByStravaActivityId(stravaActivityId: string) {
 }
 
 async function listWorkoutsOnDate(athleteEmail: string, dateStr: string) {
-  const { data, errors } = await client.models.Workout.list({
-    filter: {
-      athleteEmail: { eq: athleteEmail },
-      date: { eq: dateStr },
-    },
-  });
+  const { data, errors } = await listAllPages<Workout>((options) =>
+    client.models.Workout.list({
+      filter: {
+        athleteEmail: { eq: athleteEmail },
+        date: { eq: dateStr },
+      },
+      ...options,
+    })
+  );
 
   if (errors) {
     console.error("Error listing workouts on date:", errors);
@@ -377,7 +406,9 @@ export const handler = async (event: SQSEvent) => {
 };
 
 async function runFallbackSweep(): Promise<void> {
-  const { data: tokens, errors: tokenErrors } = await client.models.StravaToken.list();
+  const { data: tokens, errors: tokenErrors } = await listAllPages<StravaToken>((options) =>
+    client.models.StravaToken.list(options)
+  );
   if (tokenErrors) {
     console.error("Sweep concluded early: Failed to map registered tokens:", tokenErrors);
     return;

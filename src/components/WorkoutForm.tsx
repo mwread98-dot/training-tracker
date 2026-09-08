@@ -334,6 +334,9 @@ export default function WorkoutForm({
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!title.trim()) return;
+    // An `undefined` field is dropped from the GraphQL variables, which leaves
+    // the stored value untouched — clearing a field on an edit would silently
+    // keep its old value. Send an explicit null so the field is really cleared.
     onSave({
       entryId: existing?.entryId,
       athleteEmail,
@@ -341,13 +344,13 @@ export default function WorkoutForm({
       date,
       source: source ?? "coach",
       type: type as Workout["type"],
-      intensity: cfg.intensity ? (intensity as Workout["intensity"]) : undefined,
+      intensity: cfg.intensity ? (intensity as Workout["intensity"]) : null,
       title: title.trim(),
-      description: description || undefined,
-      distanceKm: cfg.distance && distanceKm ? parseFloat(distanceKm) : undefined,
-      durationMin: cfg.duration && durationMinValue ? Math.round(durationMinValue * 100) / 100 : undefined,
-      targetPace: cfg.pace && paceMinValue ? minutesToTimeInput(paceMinValue, "pace") : undefined,
-      coachNotes: coachNotes || undefined,
+      description: description.trim() || null,
+      distanceKm: cfg.distance && distanceValue && distanceValue > 0 ? distanceValue : null,
+      durationMin: cfg.duration && durationMinValue ? Math.round(durationMinValue * 100) / 100 : null,
+      targetPace: cfg.pace && paceMinValue ? minutesToTimeInput(paceMinValue, "pace") : null,
+      coachNotes: coachNotes.trim() || null,
     });
   }
 
