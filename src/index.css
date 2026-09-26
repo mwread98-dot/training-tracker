@@ -768,6 +768,40 @@ input, select, textarea {
   font-size: 13px;
 }
 
+.calendar-sub-google {
+  margin: 10px 0 4px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  border: 1px solid #b8d9c4;
+}
+
+.calendar-sub-google p {
+  margin: 0 0 8px;
+}
+
+.calendar-sub-google p:last-child {
+  margin-bottom: 0;
+}
+
+.calendar-sub-google a {
+  color: var(--accent-dark);
+  font-weight: 600;
+}
+
+.calendar-sub-url {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  background: var(--surface);
+  color: var(--text);
+}
+
 .calendar-sub-error {
   color: var(--danger);
 }
