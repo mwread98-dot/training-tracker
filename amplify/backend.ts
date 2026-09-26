@@ -10,6 +10,7 @@ import { data } from "./data/resource";
 import { stravaCallback } from "./functions/strava-callback/resource";
 import { stravaSync } from "./functions/strava-sync/resource";
 import { stravaWebhook } from "./functions/strava-webhook/resource";
+import { calendarFeed } from "./functions/calendar-feed/resource";
 
 const backend = defineBackend({
   auth,
@@ -17,6 +18,7 @@ const backend = defineBackend({
   stravaCallback,
   stravaSync,
   stravaWebhook,
+  calendarFeed,
 });
 
 // ─── 1. Setup Amazon SQS Queue Infrastructure ────────────────────────────────
@@ -38,10 +40,18 @@ const url = webhookLambda.addFunctionUrl({
   authType: FunctionUrlAuthType.NONE,
 });
 
-// Prints your URL during deployment logs
+// Public endpoint phone calendar apps subscribe to. Access is gated by the
+// secret token in the path (see functions/calendar-feed/handler.ts).
+const calendarFeedUrl = backend.calendarFeed.resources.lambda.addFunctionUrl({
+  authType: FunctionUrlAuthType.NONE,
+});
+
+// Prints your URLs during deployment logs; the frontend reads calendarFeedUrl
+// from amplify_outputs.json to build each athlete's subscribe link.
 backend.addOutput({
   custom: {
     stravaWebhookUrl: url.url,
+    calendarFeedUrl: calendarFeedUrl.url,
   },
 });
 

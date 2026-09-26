@@ -1,6 +1,7 @@
 import { type ClientSchema, a, defineData } from "@aws-amplify/backend";
 import { stravaCallback } from "../functions/strava-callback/resource";
 import { stravaSync } from "../functions/strava-sync/resource";
+import { calendarFeed } from "../functions/calendar-feed/resource";
 
 const schema = a
   .schema({
@@ -57,12 +58,34 @@ const schema = a
         stravaDescription: a.string(),
       })
       .identifier(["entryId"])
+      // Lets the calendar feed query one athlete's workouts by date instead of
+      // scanning the whole table.
+      .secondaryIndexes((index) => [
+        index("athleteEmail").sortKeys(["date"]).queryField("workoutsByAthlete"),
+      ])
       .authorization((allow) => [
         allow.group("Coaches"),
         allow
           .ownerDefinedIn("athleteEmail")
           .identityClaim("email")
           .to(["read", "update"]),
+      ]),
+
+    // Secret token behind an athlete's subscribable calendar URL. Calendar apps
+    // can't sign in, so possessing the token is the credential — resetting it
+    // (writing a new one) revokes every existing subscription.
+    CalendarFeed: a
+      .model({
+        athleteEmail: a.string().required(),
+        token: a.string().required(),
+      })
+      .identifier(["athleteEmail"])
+      .secondaryIndexes((index) => [index("token").queryField("calendarFeedByToken")])
+      .authorization((allow) => [
+        allow
+          .ownerDefinedIn("athleteEmail")
+          .identityClaim("email")
+          .to(["read", "create", "update", "delete"]),
       ]),
 
     Availability: a
@@ -109,7 +132,10 @@ const schema = a
       .authorization((allow) => [allow.group("Athletes")])
       .handler(a.handler.function(stravaCallback)),
   })
-  .authorization((allow) => [allow.resource(stravaSync).to(["query", "mutate"])]);
+  .authorization((allow) => [
+    allow.resource(stravaSync).to(["query", "mutate"]),
+    allow.resource(calendarFeed).to(["query"]),
+  ]);
 
 export type Schema = ClientSchema<typeof schema>;
 

@@ -6,6 +6,7 @@ import CalendarGrid, { type CalendarWorkout, type DayAvailability } from "./Cale
 import WorkoutDetail from "./WorkoutDetail";
 import AvailabilityForm from "./AvailabilityForm";
 import GoalRacePanel from "./GoalRacePanel";
+import CalendarSubscribe from "./CalendarSubscribe";
 import { listAllPages } from "../listAllPages";
 
 const client = generateClient<Schema>();
@@ -354,6 +355,7 @@ export default function AthleteCalendar() {
             Strava integration is not yet configured — see README for setup steps.
           </div>
         )}
+        {email && idToken && <CalendarSubscribe email={email} idToken={idToken} />}
       </div>
 
       <div className="card">

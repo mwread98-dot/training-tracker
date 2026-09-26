@@ -88,6 +88,8 @@ amplify/
   auth/resource.ts     — Cognito setup (groups, login method)
   data/resource.ts     — Data models (Profile, Workout) + permissions
   backend.ts           — wires auth + data together
+  functions/
+    calendar-feed/     — public .ics feed athletes subscribe to from their phone calendar
 src/
   App.tsx              — login wrapper + routes coach vs athlete view
   components/
@@ -96,6 +98,7 @@ src/
     WorkoutForm.tsx     — coach's create/edit workout modal
     WorkoutDetail.tsx   — athlete's view/complete/notes modal
     CalendarGrid.tsx    — shared month-grid renderer
+    CalendarSubscribe.tsx — athlete's "Add to calendar" link panel
 ```
 
 ## 7. Troubleshooting
