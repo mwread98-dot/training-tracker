@@ -688,12 +688,6 @@ input, select, textarea {
   color: var(--text-muted);
 }
 
-.strava-banner--success {
-  background: var(--accent-soft);
-  border-color: #b8d9c4;
-  color: var(--accent-dark);
-}
-
 .strava-banner--error {
   background: #fdecea;
   border-color: #f5b8b2;
@@ -720,10 +714,17 @@ input, select, textarea {
   background: #e04400;
 }
 
+/* ── Setup prompts above the athlete calendar ── */
+.athlete-prompts {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
 /* ── Calendar subscription ── */
 .calendar-sub-banner,
 .calendar-sub-panel {
-  margin-top: 10px;
   padding: 10px 14px;
   border-radius: var(--radius);
   background: var(--surface);
@@ -739,7 +740,7 @@ input, select, textarea {
   flex-wrap: wrap;
 }
 
-.calendar-sub-panel p {
+.calendar-sub-body p {
   margin: 8px 0 12px;
 }
 
@@ -757,7 +758,8 @@ input, select, textarea {
   margin: 10px 0 4px;
 }
 
-.calendar-sub-actions a.btn {
+.calendar-sub-actions a.btn,
+.calendar-sub-steps a.btn {
   display: inline-flex;
   align-items: center;
   text-decoration: none;
@@ -768,31 +770,31 @@ input, select, textarea {
   font-size: 13px;
 }
 
-.calendar-sub-google {
+.calendar-sub-steps {
   margin: 10px 0 4px;
-  padding: 10px 12px;
+  padding: 10px 12px 10px 34px;
   border-radius: 8px;
   background: var(--accent-soft);
   border: 1px solid #b8d9c4;
 }
 
-.calendar-sub-google p {
-  margin: 0 0 8px;
+.calendar-sub-steps li + li {
+  margin-top: 10px;
 }
 
-.calendar-sub-google p:last-child {
-  margin-bottom: 0;
+.calendar-sub-steps a.btn {
+  margin-top: 8px;
 }
 
-.calendar-sub-google a {
-  color: var(--accent-dark);
-  font-weight: 600;
+.calendar-sub-body .calendar-sub-steps p {
+  margin: 8px 0 0;
 }
 
 .calendar-sub-url {
+  display: block;
   width: 100%;
   box-sizing: border-box;
-  margin-bottom: 8px;
+  margin-top: 6px;
   padding: 6px 8px;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -804,6 +806,68 @@ input, select, textarea {
 
 .calendar-sub-error {
   color: var(--danger);
+}
+
+/* ── Connections (below the athlete calendar) ── */
+.connections {
+  margin-top: 16px;
+}
+
+.connections h3 {
+  font-size: 16px;
+  margin-bottom: 10px;
+}
+
+.connection {
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+  font-size: 14px;
+}
+
+.connection:last-child {
+  padding-bottom: 0;
+}
+
+.connection-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.connection-info {
+  display: flex;
+  flex-direction: column;
+  margin-right: auto;
+}
+
+.connection-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.connection-icon {
+  display: inline-flex;
+  justify-content: center;
+  width: 20px;
+}
+
+.connection-icon--strava {
+  color: #fc4c02;
+}
+
+.connection-status {
+  padding-left: 28px; /* line up under the name, past the icon */
+  color: var(--accent-dark);
+  font-size: 13px;
+}
+
+.connection-error {
+  margin: 8px 0 0;
+  color: var(--danger);
+  font-size: 13px;
 }
 
 /* ── Planned vs actual stats table ── */

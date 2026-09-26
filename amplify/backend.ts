@@ -11,6 +11,7 @@ import { stravaCallback } from "./functions/strava-callback/resource";
 import { stravaSync } from "./functions/strava-sync/resource";
 import { stravaWebhook } from "./functions/strava-webhook/resource";
 import { calendarFeed } from "./functions/calendar-feed/resource";
+import { stravaDisconnect } from "./functions/strava-disconnect/resource";
 
 const backend = defineBackend({
   auth,
@@ -19,6 +20,7 @@ const backend = defineBackend({
   stravaSync,
   stravaWebhook,
   calendarFeed,
+  stravaDisconnect,
 });
 
 // ─── 1. Setup Amazon SQS Queue Infrastructure ────────────────────────────────
@@ -75,6 +77,15 @@ tokenTable.grantReadWriteData(backend.stravaSync.resources.lambda);
 workoutTable.grantReadWriteData(backend.stravaSync.resources.lambda);
 backend.stravaSync.addEnvironment("STRAVA_TOKEN_TABLE", tokenTable.tableName);
 backend.stravaSync.addEnvironment("WORKOUT_TABLE", workoutTable.tableName);
+
+// strava-disconnect database wiring
+tokenTable.grantReadWriteData(backend.stravaDisconnect.resources.lambda);
+backend.stravaDisconnect.addEnvironment("STRAVA_TOKEN_TABLE", tokenTable.tableName);
+
+// calendar-feed stamps lastFetchedAt when a calendar app fetches a feed
+const calendarFeedTable = backend.data.resources.tables["CalendarFeed"];
+calendarFeedTable.grantWriteData(backend.calendarFeed.resources.lambda);
+backend.calendarFeed.addEnvironment("CALENDAR_FEED_TABLE", calendarFeedTable.tableName);
 
 // ─── 5. EventBridge Fallback Sweep (Every 6 Hours) ───────────────────────────
 const rule = new events.Rule(syncStack, "StravaSyncSchedule", {

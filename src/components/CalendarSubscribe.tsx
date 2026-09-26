@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "../../amplify/data/resource";
 import outputs from "../../amplify_outputs.json";
@@ -8,6 +8,8 @@ const client = generateClient<Schema>();
 // Present once the backend with the calendar-feed Lambda has been deployed.
 const FEED_BASE_URL: string | undefined = (outputs as { custom?: { calendarFeedUrl?: string } }).custom
   ?.calendarFeedUrl;
+
+export const CALENDAR_FEED_ENABLED = !!FEED_BASE_URL;
 
 function generateToken() {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
@@ -25,7 +27,7 @@ function feedUrl(token: string) {
 // refuses https:// URLs, and fetches webcal:// ones over plain http://, which a
 // Lambda Function URL doesn't serve — the calendar gets added but stays empty.
 // Pasting the https:// link into "Add calendar → From URL" does work, and
-// Google offers no way to pre-fill that box, so copy the link and open the page.
+// Google offers no way to pre-fill that box, so the athlete pastes it there.
 const GOOGLE_ADD_BY_URL = "https://calendar.google.com/calendar/u/0/r/settings/addbyurl";
 
 type GoogleStep = "idle" | "copied" | "copy_failed";
@@ -33,42 +35,31 @@ type GoogleStep = "idle" | "copied" | "copy_failed";
 type Props = {
   email: string;
   idToken: string;
+  initialToken: string | null;
+  // "prompt" invites the athlete to set it up; "manage" is the row in the
+  // Connections section once a calendar app is using the feed.
+  variant: "prompt" | "manage";
 };
 
-export default function CalendarSubscribe({ email, idToken }: Props) {
-  const [token, setToken] = useState<string | null>(null);
-  const [loaded, setLoaded] = useState(false);
+export default function CalendarSubscribe({ email, idToken, initialToken, variant }: Props) {
+  const [token, setToken] = useState(initialToken);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const [googleStep, setGoogleStep] = useState<GoogleStep>("idle");
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!FEED_BASE_URL) return;
-    (async () => {
-      const { data, errors } = await client.models.CalendarFeed.get(
-        { athleteEmail: email },
-        { authMode: "userPool", authToken: idToken }
-      );
-      if (errors?.length) {
-        console.error("Failed to load calendar feed", errors);
-      } else {
-        setToken(data?.token ?? null);
-      }
-      setLoaded(true);
-    })();
-  }, [email, idToken]);
-
-  if (!FEED_BASE_URL || !loaded) return null;
+  if (!FEED_BASE_URL) return null;
 
   // Creating and resetting are the same write: a fresh token replaces the old
-  // one, which stops any calendar still subscribed to the old link.
+  // one, which stops any calendar still subscribed to the old link. Clearing
+  // lastFetchedAt means the new link only counts as connected once a calendar
+  // app has fetched it.
   async function issueToken() {
     setBusy(true);
     setError(null);
     const next = generateToken();
-    const payload = { athleteEmail: email, token: next };
+    const payload = { athleteEmail: email, token: next, lastFetchedAt: null };
     const options = { authMode: "userPool" as const, authToken: idToken };
     const { errors } = token
       ? await client.models.CalendarFeed.update(payload, options)
@@ -100,7 +91,8 @@ export default function CalendarSubscribe({ email, idToken }: Props) {
     }
   }
 
-  // Copy first: once the new tab takes focus, the clipboard write would be refused.
+  // Copies the link and shows the steps, but leaves opening Google to the
+  // athlete, so they've seen the link is copied before they need to paste it.
   async function handleGoogle(url: string) {
     try {
       await navigator.clipboard.writeText(url);
@@ -108,34 +100,13 @@ export default function CalendarSubscribe({ email, idToken }: Props) {
     } catch {
       setGoogleStep("copy_failed");
     }
-    // Browsers that block this (Safari can, after the await) still get the
-    // "Open Google Calendar" link in the instructions below.
-    window.open(GOOGLE_ADD_BY_URL, "_blank", "noopener,noreferrer");
-  }
-
-  if (!open) {
-    return (
-      <div className="calendar-sub-banner">
-        <span>📅 See your training plan in your phone's calendar app.</span>
-        <button type="button" className="btn" onClick={() => setOpen(true)}>
-          Add to calendar
-        </button>
-      </div>
-    );
   }
 
   const url = token ? feedUrl(token) : null;
   const webcalUrl = url?.replace(/^https?:\/\//, "webcal://");
 
-  return (
-    <div className="calendar-sub-panel">
-      <div className="calendar-sub-header">
-        <strong>Add your training plan to your calendar</strong>
-        <button type="button" className="btn-text" onClick={() => setOpen(false)}>
-          Close
-        </button>
-      </div>
-
+  const body = (
+    <div className="calendar-sub-body">
       {!url ? (
         <>
           <p>
@@ -160,36 +131,36 @@ export default function CalendarSubscribe({ email, idToken }: Props) {
             </button>
           </div>
           {googleStep !== "idle" && (
-            <div className="calendar-sub-google">
-              {googleStep === "copied" ? (
-                <p>
-                  <strong>Link copied.</strong> In the Google Calendar tab, paste it into{" "}
-                  <strong>URL of calendar</strong> and click <strong>Add calendar</strong>.
+            <ol className="calendar-sub-steps">
+              <li>
+                {googleStep === "copied" ? (
+                  <strong>Link copied ✓</strong>
+                ) : (
+                  <>
+                    Copy this link:
+                    <input
+                      className="calendar-sub-url"
+                      readOnly
+                      value={url}
+                      onFocus={(e) => e.currentTarget.select()}
+                      aria-label="Your calendar link"
+                    />
+                  </>
+                )}
+              </li>
+              <li>
+                Open Google Calendar, paste the link into <strong>URL of calendar</strong> and click{" "}
+                <strong>Add calendar</strong>.
+                <div>
+                  <a className="btn btn-primary" href={GOOGLE_ADD_BY_URL} target="_blank" rel="noreferrer">
+                    Open Google Calendar
+                  </a>
+                </div>
+                <p className="calendar-sub-hint">
+                  Do this on a computer. It then shows up on your phone too.
                 </p>
-              ) : (
-                <>
-                  <p>
-                    Copy this link, then in the Google Calendar tab paste it into{" "}
-                    <strong>URL of calendar</strong> and click <strong>Add calendar</strong>.
-                  </p>
-                  <input
-                    className="calendar-sub-url"
-                    readOnly
-                    value={url}
-                    onFocus={(e) => e.currentTarget.select()}
-                    aria-label="Your calendar link"
-                  />
-                </>
-              )}
-              <p className="calendar-sub-hint">
-                No new tab?{" "}
-                <a href={GOOGLE_ADD_BY_URL} target="_blank" rel="noreferrer">
-                  Open Google Calendar
-                </a>
-                . Do this on a computer: Google Calendar's phone app can't add a calendar from a link,
-                but once it's added it shows up on your phone too.
-              </p>
-            </div>
+              </li>
+            </ol>
           )}
           <p className="calendar-sub-hint">
             Using Outlook or something else? Copy the link and add it as a calendar subscription
@@ -205,8 +176,52 @@ export default function CalendarSubscribe({ email, idToken }: Props) {
           </button>
         </>
       )}
-
       {error && <p className="calendar-sub-error">{error}</p>}
+    </div>
+  );
+
+  if (variant === "manage") {
+    return (
+      <div className="connection">
+        <div className="connection-row">
+          <div className="connection-info">
+            <span className="connection-name">
+              <span className="connection-icon" aria-hidden="true">
+                📅
+              </span>
+              Calendar
+            </span>
+            <span className="connection-status">Connected</span>
+          </div>
+          <button type="button" className="btn" onClick={() => setOpen(!open)}>
+            {open ? "Close" : "Add to another calendar"}
+          </button>
+        </div>
+        {open && body}
+      </div>
+    );
+  }
+
+  if (!open) {
+    return (
+      <div className="calendar-sub-banner">
+        <span>📅 See your training plan in your phone's calendar app.</span>
+        <button type="button" className="btn" onClick={() => setOpen(true)}>
+          Add to calendar
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="calendar-sub-panel">
+      <div className="calendar-sub-header">
+        <strong>Add your training plan to your calendar</strong>
+        <button type="button" className="btn-text" onClick={() => setOpen(false)}>
+          Close
+        </button>
+      </div>
+      {body}
     </div>
   );
 }

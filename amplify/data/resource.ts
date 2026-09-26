@@ -2,6 +2,7 @@ import { type ClientSchema, a, defineData } from "@aws-amplify/backend";
 import { stravaCallback } from "../functions/strava-callback/resource";
 import { stravaSync } from "../functions/strava-sync/resource";
 import { calendarFeed } from "../functions/calendar-feed/resource";
+import { stravaDisconnect } from "../functions/strava-disconnect/resource";
 
 const schema = a
   .schema({
@@ -78,6 +79,9 @@ const schema = a
       .model({
         athleteEmail: a.string().required(),
         token: a.string().required(),
+        // Stamped by the feed Lambda when a calendar app fetches the feed; the
+        // athlete page treats a fetched feed as a connected calendar.
+        lastFetchedAt: a.datetime(),
       })
       .identifier(["athleteEmail"])
       .secondaryIndexes((index) => [index("token").queryField("calendarFeedByToken")])
@@ -131,6 +135,12 @@ const schema = a
       .returns(a.customType({ success: a.boolean(), message: a.string() }))
       .authorization((allow) => [allow.group("Athletes")])
       .handler(a.handler.function(stravaCallback)),
+
+    disconnectStrava: a
+      .mutation()
+      .returns(a.customType({ success: a.boolean(), message: a.string() }))
+      .authorization((allow) => [allow.group("Athletes")])
+      .handler(a.handler.function(stravaDisconnect)),
   })
   .authorization((allow) => [
     allow.resource(stravaSync).to(["query", "mutate"]),

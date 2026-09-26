@@ -6,13 +6,14 @@ import CalendarGrid, { type CalendarWorkout, type DayAvailability } from "./Cale
 import WorkoutDetail from "./WorkoutDetail";
 import AvailabilityForm from "./AvailabilityForm";
 import GoalRacePanel from "./GoalRacePanel";
-import CalendarSubscribe from "./CalendarSubscribe";
+import CalendarSubscribe, { CALENDAR_FEED_ENABLED } from "./CalendarSubscribe";
 import { listAllPages } from "../listAllPages";
 
 const client = generateClient<Schema>();
 type Workout = Schema["Workout"]["type"];
 type Availability = Schema["Availability"]["type"];
 type Profile = Schema["Profile"]["type"];
+type CalendarFeed = Schema["CalendarFeed"]["type"];
 
 const POLL_MS = 20000;
 const STRAVA_CLIENT_ID = (import.meta as any).env?.VITE_STRAVA_CLIENT_ID ?? "";
@@ -50,6 +51,11 @@ export default function AthleteCalendar() {
     "unknown" | "connected" | "not_connected" | "connecting" | "error"
   >("unknown");
   const [stravaError, setStravaError] = useState<string | null>(null);
+  const [stravaDisconnecting, setStravaDisconnecting] = useState(false);
+  const [stravaDisconnectError, setStravaDisconnectError] = useState<string | null>(null);
+  // undefined until loaded. It's read once, so the calendar options stay where
+  // they are while the athlete uses them rather than jumping mid-setup.
+  const [calendarFeed, setCalendarFeed] = useState<CalendarFeed | null | undefined>(undefined);
 
   const [authError, setAuthError] = useState(false);
 
@@ -123,6 +129,48 @@ export default function AthleteCalendar() {
       }
     })();
   }, [email, idToken, stravaStatus]);
+
+  useEffect(() => {
+    if (!email || !idToken || !CALENDAR_FEED_ENABLED) return;
+    (async () => {
+      try {
+        const { data, errors } = await client.models.CalendarFeed.get(
+          { athleteEmail: email },
+          { authMode: "userPool", authToken: idToken }
+        );
+        if (errors?.length) {
+          console.error("Failed to load calendar feed", errors);
+          return;
+        }
+        setCalendarFeed(data ?? null);
+      } catch (err) {
+        console.error("Failed to load calendar feed", err);
+      }
+    })();
+  }, [email, idToken]);
+
+  async function handleDisconnectStrava() {
+    if (!idToken) return;
+    if (!window.confirm("Disconnect Strava? New activities will stop syncing.")) return;
+    setStravaDisconnecting(true);
+    setStravaDisconnectError(null);
+    try {
+      const result = await client.mutations.disconnectStrava({
+        authMode: "userPool",
+        authToken: idToken,
+      });
+      if (result.data?.success) {
+        setStravaStatus("not_connected");
+      } else {
+        setStravaDisconnectError(result.data?.message ?? "Couldn't disconnect Strava. Please try again.");
+      }
+    } catch (err) {
+      console.error("disconnectStrava error:", err);
+      setStravaDisconnectError("Couldn't disconnect Strava. Please try again.");
+    } finally {
+      setStravaDisconnecting(false);
+    }
+  }
 
   // Guards against the 20s poll and a post-save reload resolving out of order —
   // without this, a slower in-flight poll response can land after a save and
@@ -323,40 +371,55 @@ export default function AthleteCalendar() {
     );
   }
 
+  // Things still to set up sit above the calendar; once connected, they're
+  // managed from the Connections section below it.
+  const calendarConnected = !!calendarFeed?.lastFetchedAt;
+  const showCalendarPrompt = calendarFeed !== undefined && !calendarConnected;
+  const showStravaPrompt =
+    !STRAVA_CLIENT_ID ||
+    stravaStatus === "not_connected" ||
+    stravaStatus === "connecting" ||
+    stravaStatus === "error";
+  const showConnections = stravaStatus === "connected" || calendarConnected;
+
   return (
     <div>
-      <div style={{ marginBottom: 16 }}>
-        {stravaStatus === "not_connected" && STRAVA_CLIENT_ID && (
-          <div className="strava-banner">
-            <span>Connect Strava to automatically log your sessions.</span>
-            <a href={buildStravaAuthUrl()} className="btn-strava">
-              <StravaLogo /> Connect with Strava
-            </a>
-          </div>
-        )}
-        {stravaStatus === "connecting" && (
-          <div className="strava-banner strava-banner--muted">Connecting your Strava account…</div>
-        )}
-        {stravaStatus === "connected" && (
-          <div className="strava-banner strava-banner--success">
-            ✓ Strava connected.
-          </div>
-        )}
-        {stravaStatus === "error" && (
-          <div className="strava-banner strava-banner--error">
-            {stravaError ?? "Strava connection error."}{" "}
-            <a href={buildStravaAuthUrl()} style={{ color: "inherit", fontWeight: 600 }}>
-              Try again
-            </a>
-          </div>
-        )}
-        {!STRAVA_CLIENT_ID && (
-          <div className="strava-banner strava-banner--muted">
-            Strava integration is not yet configured — see README for setup steps.
-          </div>
-        )}
-        {email && idToken && <CalendarSubscribe email={email} idToken={idToken} />}
-      </div>
+      {(showStravaPrompt || showCalendarPrompt) && (
+        <div className="athlete-prompts">
+          {stravaStatus === "not_connected" && STRAVA_CLIENT_ID && (
+            <div className="strava-banner">
+              <span>Connect Strava to automatically log your sessions.</span>
+              <a href={buildStravaAuthUrl()} className="btn-strava">
+                <StravaLogo /> Connect with Strava
+              </a>
+            </div>
+          )}
+          {stravaStatus === "connecting" && (
+            <div className="strava-banner strava-banner--muted">Connecting your Strava account…</div>
+          )}
+          {stravaStatus === "error" && (
+            <div className="strava-banner strava-banner--error">
+              {stravaError ?? "Strava connection error."}{" "}
+              <a href={buildStravaAuthUrl()} style={{ color: "inherit", fontWeight: 600 }}>
+                Try again
+              </a>
+            </div>
+          )}
+          {!STRAVA_CLIENT_ID && (
+            <div className="strava-banner strava-banner--muted">
+              Strava integration is not yet configured — see README for setup steps.
+            </div>
+          )}
+          {showCalendarPrompt && email && idToken && (
+            <CalendarSubscribe
+              email={email}
+              idToken={idToken}
+              initialToken={calendarFeed?.token ?? null}
+              variant="prompt"
+            />
+          )}
+        </div>
+      )}
 
       <div className="card">
         <GoalRacePanel goalRaceName={profile?.goalRaceName} goalRaceDate={profile?.goalRaceDate} />
@@ -409,6 +472,44 @@ export default function AthleteCalendar() {
           />
         )}
       </div>
+
+      {showConnections && (
+        <section className="card connections">
+          <h3>Connections</h3>
+          {stravaStatus === "connected" && (
+            <div className="connection">
+              <div className="connection-row">
+                <div className="connection-info">
+                  <span className="connection-name">
+                    <span className="connection-icon connection-icon--strava">
+                      <StravaLogo />
+                    </span>
+                    Strava
+                  </span>
+                  <span className="connection-status">Connected</span>
+                </div>
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={stravaDisconnecting}
+                  onClick={handleDisconnectStrava}
+                >
+                  {stravaDisconnecting ? "Disconnecting…" : "Disconnect"}
+                </button>
+              </div>
+              {stravaDisconnectError && <p className="connection-error">{stravaDisconnectError}</p>}
+            </div>
+          )}
+          {calendarConnected && email && idToken && (
+            <CalendarSubscribe
+              email={email}
+              idToken={idToken}
+              initialToken={calendarFeed?.token ?? null}
+              variant="manage"
+            />
+          )}
+        </section>
+      )}
     </div>
   );
 }
