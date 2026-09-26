@@ -720,6 +720,58 @@ input, select, textarea {
   background: #e04400;
 }
 
+/* ── Calendar subscription ── */
+.calendar-sub-banner,
+.calendar-sub-panel {
+  margin-top: 10px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-size: 14px;
+}
+
+.calendar-sub-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.calendar-sub-panel p {
+  margin: 8px 0 12px;
+}
+
+.calendar-sub-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.calendar-sub-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 4px;
+}
+
+.calendar-sub-actions a.btn {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.calendar-sub-hint {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.calendar-sub-error {
+  color: var(--danger);
+}
+
 /* ── Planned vs actual stats table ── */
 .stats-table {
   border: 1px solid var(--border);
