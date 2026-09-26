@@ -21,6 +21,15 @@ function feedUrl(token: string) {
   return `${FEED_BASE_URL!.replace(/\/+$/, "")}/${token}.ics`;
 }
 
+// Google has no one-click subscribe that works for this feed: its `?cid=` link
+// refuses https:// URLs, and fetches webcal:// ones over plain http://, which a
+// Lambda Function URL doesn't serve — the calendar gets added but stays empty.
+// Pasting the https:// link into "Add calendar → From URL" does work, and
+// Google offers no way to pre-fill that box, so copy the link and open the page.
+const GOOGLE_ADD_BY_URL = "https://calendar.google.com/calendar/u/0/r/settings/addbyurl";
+
+type GoogleStep = "idle" | "copied" | "copy_failed";
+
 type Props = {
   email: string;
   idToken: string;
@@ -32,6 +41,7 @@ export default function CalendarSubscribe({ email, idToken }: Props) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [googleStep, setGoogleStep] = useState<GoogleStep>("idle");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -71,6 +81,7 @@ export default function CalendarSubscribe({ email, idToken }: Props) {
     }
     setToken(next);
     setCopied(false);
+    setGoogleStep("idle");
   }
 
   async function handleReset() {
@@ -89,6 +100,19 @@ export default function CalendarSubscribe({ email, idToken }: Props) {
     }
   }
 
+  // Copy first: once the new tab takes focus, the clipboard write would be refused.
+  async function handleGoogle(url: string) {
+    try {
+      await navigator.clipboard.writeText(url);
+      setGoogleStep("copied");
+    } catch {
+      setGoogleStep("copy_failed");
+    }
+    // Browsers that block this (Safari can, after the await) still get the
+    // "Open Google Calendar" link in the instructions below.
+    window.open(GOOGLE_ADD_BY_URL, "_blank", "noopener,noreferrer");
+  }
+
   if (!open) {
     return (
       <div className="calendar-sub-banner">
@@ -102,9 +126,6 @@ export default function CalendarSubscribe({ email, idToken }: Props) {
 
   const url = token ? feedUrl(token) : null;
   const webcalUrl = url?.replace(/^https?:\/\//, "webcal://");
-  const googleUrl = webcalUrl
-    ? `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(webcalUrl)}`
-    : null;
 
   return (
     <div className="calendar-sub-panel">
@@ -131,13 +152,45 @@ export default function CalendarSubscribe({ email, idToken }: Props) {
             <a className="btn btn-primary" href={webcalUrl}>
               iPhone / Mac
             </a>
-            <a className="btn" href={googleUrl!} target="_blank" rel="noreferrer">
-              Google Calendar / Android
-            </a>
+            <button type="button" className="btn" onClick={() => handleGoogle(url)}>
+              Google Calendar
+            </button>
             <button type="button" className="btn" onClick={() => handleCopy(url)}>
               {copied ? "Copied ✓" : "Copy link"}
             </button>
           </div>
+          {googleStep !== "idle" && (
+            <div className="calendar-sub-google">
+              {googleStep === "copied" ? (
+                <p>
+                  <strong>Link copied.</strong> In the Google Calendar tab, paste it into{" "}
+                  <strong>URL of calendar</strong> and click <strong>Add calendar</strong>.
+                </p>
+              ) : (
+                <>
+                  <p>
+                    Copy this link, then in the Google Calendar tab paste it into{" "}
+                    <strong>URL of calendar</strong> and click <strong>Add calendar</strong>.
+                  </p>
+                  <input
+                    className="calendar-sub-url"
+                    readOnly
+                    value={url}
+                    onFocus={(e) => e.currentTarget.select()}
+                    aria-label="Your calendar link"
+                  />
+                </>
+              )}
+              <p className="calendar-sub-hint">
+                No new tab?{" "}
+                <a href={GOOGLE_ADD_BY_URL} target="_blank" rel="noreferrer">
+                  Open Google Calendar
+                </a>
+                . Do this on a computer: Google Calendar's phone app can't add a calendar from a link,
+                but once it's added it shows up on your phone too.
+              </p>
+            </div>
+          )}
           <p className="calendar-sub-hint">
             Using Outlook or something else? Copy the link and add it as a calendar subscription
             ("subscribe from web" or "add calendar from URL"). Keep the link private: anyone with it
