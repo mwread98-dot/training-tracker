@@ -272,7 +272,7 @@ export default function CoachDashboard() {
 
   const calendarWorkouts: CalendarWorkout[] = useMemo(
     () =>
-      workouts.map((w) => ({
+      workouts.filter((w) => w.athleteEmail === selected?.email).map((w) => ({
         id: w.entryId,
         date: w.date,
         title: w.title,
@@ -294,7 +294,7 @@ export default function CoachDashboard() {
           w.avgHeartRate
         ),
       })),
-    [workouts]
+    [workouts, selected?.email]
   );
 
   const availabilityMap = useMemo(() => {
@@ -395,6 +395,7 @@ export default function CoachDashboard() {
               onClear={handleClearGoalRace}
             />
             <CalendarGrid
+              key={selected.email}
               year={year}
               month={month}
               workouts={calendarWorkouts}
