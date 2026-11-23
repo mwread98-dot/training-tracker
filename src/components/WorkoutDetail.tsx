@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import type { Schema } from "../../amplify/data/resource";
+import { formatIntensityLabel } from "../workoutIntensity";
 
 type Workout = Schema["Workout"]["type"];
 export type WorkoutChanges = { date?: string; completed?: boolean; athleteNotes?: string | null };
@@ -74,7 +75,7 @@ function CompletedActivityCard({ workout }: { workout: Workout }) {
           <strong style={{ display: "block", marginBottom: 2 }}>{stravaTitle}</strong>
           <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
             {(workout.type ?? "session").replace("_", " ")}
-            {workout.intensity && ` · ${workout.intensity.replace("_", " ")}`}
+            {workout.intensity && ` · ${formatIntensityLabel(workout.intensity)}`}
           </span>
         </div>
         <span
@@ -195,7 +196,7 @@ export default function WorkoutDetail({
         <p style={{ color: "var(--text-muted)", fontSize: 14, marginTop: 0, marginBottom: 16 }}>
           {workout.date}
           {workout.type && ` · ${workout.type.replace("_", " ")}`}
-          {workout.intensity && ` · ${workout.intensity.replace("_", " ")}`}
+          {workout.intensity && ` · ${formatIntensityLabel(workout.intensity)}`}
         </p>
 
         {canReschedule && (

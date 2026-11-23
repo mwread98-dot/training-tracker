@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { formatIntensityLabel, normalizeWorkoutIntensity } from "../workoutIntensity";
 
 export type CalendarWorkout = {
   id: string;
@@ -148,33 +149,9 @@ function completedDuration(workout: CalendarWorkout) {
   return workout.actualDurationMin ?? workout.durationMin ?? 0;
 }
 
-// Gracefully normalizes legacy intensities to the newly supported set
-function getIntensityClass(intensity?: string | null) {
-  const normalized = (intensity ?? "easy").toLowerCase();
-  if (normalized === "hard" || normalized === "speed_work") return "speed_work";
-  if (normalized === "race_pace" || normalized === "marathon_pace") return "marathon_pace";
-  if (normalized === "moderate" || normalized === "threshold") return "threshold";
-  if (normalized === "vo2_max") return "vo2_max";
-  return "easy";
-}
-
-function chipClass(w: CalendarWorkout) {
-  const classes = ["workout-chip"];
-  
-  if (isWorkoutCompleted(w)) {
-    classes.push("completed");
-  }
-
-  const intensity = getIntensityClass(w.intensity);
-  classes.push(`intensity-${intensity}`);
-
-  return classes.join(" ");
-}
-
-function mobileIndicatorClass(w: CalendarWorkout) {
-  const classes = ["mobile-workout-indicator", `intensity-${getIntensityClass(w.intensity)}`];
-  if (isWorkoutCompleted(w)) classes.push("completed");
-  return classes.join(" ");
+function workoutClass(workout: CalendarWorkout, base: "workout-chip" | "mobile-workout-indicator") {
+  const intensity = normalizeWorkoutIntensity(workout.intensity) ?? "easy";
+  return `${base} intensity-${intensity}${isWorkoutCompleted(workout) ? " completed" : ""}`;
 }
 
 function runDistanceLabel(workout: CalendarWorkout) {
@@ -224,9 +201,12 @@ function workoutTitleFontSize(title: string) {
 }
 
 function chipLabel(w: CalendarWorkout) {
-  const title = workoutTitleLabel(w);
-  const meta = chipMetaLabel(w);
-  return `${title}${meta ? ` · ${meta}` : ""}`;
+  return [
+    workoutTitleLabel(w),
+    w.intensity && formatIntensityLabel(w.intensity),
+    chipMetaLabel(w),
+    isWorkoutCompleted(w) && "Completed",
+  ].filter(Boolean).join(" · ");
 }
 
 function formatDuration(totalMin: number) {
@@ -784,12 +764,13 @@ export default function CalendarGrid({
                   {(byDate[cell.iso] ?? []).map((w) => (
                     <button
                       key={w.id}
-                      className={chipClass(w)}
+                      className={workoutClass(w, "workout-chip")}
                       onClick={(e) => {
                         e.stopPropagation();
                         onWorkoutClick?.(w);
                       }}
                       title={chipLabel(w)}
+                      aria-label={chipLabel(w)}
                     >
                       <span
                         className="workout-chip-title"
@@ -863,7 +844,7 @@ export default function CalendarGrid({
                       )}
                       <span className="mobile-workout-indicators" aria-hidden="true">
                         {items.slice(0, 3).map((workout) => (
-                          <span key={workout.id} className={mobileIndicatorClass(workout)} />
+                          <span key={workout.id} className={workoutClass(workout, "mobile-workout-indicator")} />
                         ))}
                         {items.length > 3 && <span className="mobile-workout-more">+{items.length - 3}</span>}
                       </span>
@@ -921,7 +902,7 @@ export default function CalendarGrid({
                     <button
                       key={workout.id}
                       type="button"
-                      className={chipClass(workout)}
+                      className={workoutClass(workout, "workout-chip")}
                       onClick={() => {
                         setSelectedMobileDate(null);
                         onWorkoutClick?.(workout);

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Schema } from "../../amplify/data/resource";
 import type { DayAvailability } from "./CalendarGrid";
 import TimeField from "./TimeField";
+import { formatIntensityLabel, normalizeWorkoutIntensity, OTHER_INTENSITIES, RUN_INTENSITIES } from "../workoutIntensity";
 import {
   digitsFromFormatted,
   digitsToMinutes,
@@ -40,7 +41,6 @@ const AVAILABILITY_COLOR: Record<DayAvailability, string> = {
 };
 
 const TYPES = ["run", "cross_train", "strength"];
-const INTENSITIES = ["easy", "marathon_pace", "threshold", "vo2_max", "speed_work"];
 
 type FieldConfig = {
   distance: boolean;
@@ -85,14 +85,6 @@ function formatDistance(km: number) {
 
 function statText(label: string, value: string | null | undefined) {
   return value ? `${label}: ${value}` : null;
-}
-
-function formatIntensityLabel(intensity: string) {
-  if (intensity === "vo2_max") return "VO2 Max";
-  return intensity
-    .split("_")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
 }
 
 function CompletedActivityCard({ workout }: { workout: Workout }) {
@@ -175,11 +167,13 @@ export default function WorkoutForm({
 
   // Gracefully fallback legacy types or intensities so the UI doesn't crash
   const initialType = existing?.type && TYPES.includes(existing.type) ? existing.type : "run";
-  const initialIntensity = existing?.intensity && INTENSITIES.includes(existing.intensity) ? existing.intensity : "easy";
+  const initialIntensity = normalizeWorkoutIntensity(existing?.intensity) ?? "easy";
 
   const [date, setDate] = useState(existing?.date ?? defaultDate);
   const [type, setType] = useState<string>(initialType);
-  const [intensity, setIntensity] = useState<string>(initialIntensity);
+  const [intensity, setIntensity] = useState(initialIntensity);
+  const intensityOptions = type === "run" ? RUN_INTENSITIES : OTHER_INTENSITIES;
+  const selectedIntensity = intensityOptions.includes(intensity) ? intensity : "easy";
   const [title, setTitle] = useState(existing?.title ?? "");
   const [description, setDescription] = useState(isStravaAutoCreated ? "" : existing?.description ?? "");
   const initialDistance = isStravaAutoCreated ? "" : existing?.distanceKm?.toString() ?? "";
@@ -301,9 +295,7 @@ export default function WorkoutForm({
   function handlePaste() {
     if (!copiedWorkout) return;
     if (copiedWorkout.type && TYPES.includes(copiedWorkout.type)) setType(copiedWorkout.type);
-    if (copiedWorkout.intensity && INTENSITIES.includes(copiedWorkout.intensity)) {
-      setIntensity(copiedWorkout.intensity);
-    }
+    setIntensity(normalizeWorkoutIntensity(copiedWorkout.intensity) ?? "easy");
     setTitle(copiedWorkout.title ?? "");
     setDescription(copiedWorkout.description ?? "");
     const pastedDistance = copiedWorkout.distanceKm != null ? String(copiedWorkout.distanceKm) : "";
@@ -329,7 +321,7 @@ export default function WorkoutForm({
       date,
       source: source ?? "coach",
       type: type as Workout["type"],
-      intensity: cfg.intensity ? (intensity as Workout["intensity"]) : null,
+      intensity: cfg.intensity ? selectedIntensity : null,
       title: title.trim(),
       description: description.trim() || null,
       distanceKm: cfg.distance && distanceValue && distanceValue > 0 ? distanceValue : null,
@@ -568,8 +560,13 @@ export default function WorkoutForm({
                 {cfg.intensity && (
                   <div className="field">
                     <label htmlFor="workout-intensity">Intensity</label>
-                    <select id="workout-intensity" value={intensity ?? "easy"} onChange={(e) => setIntensity(e.target.value)}>
-                      {INTENSITIES.map((i) => (
+                    <select
+                      id="workout-intensity"
+                      className={`workout-intensity-select intensity-${selectedIntensity}`}
+                      value={selectedIntensity}
+                      onChange={(e) => setIntensity(normalizeWorkoutIntensity(e.target.value) ?? "easy")}
+                    >
+                      {intensityOptions.map((i) => (
                         <option key={i} value={i}>
                           {formatIntensityLabel(i)}
                         </option>
