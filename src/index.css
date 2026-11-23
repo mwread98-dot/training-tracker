@@ -597,8 +597,40 @@ input, select, textarea {
 }
 
 .progress-chart {
+  display: flex;
   height: 220px;
   width: 100%;
+}
+
+.progress-chart-scroll {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+}
+
+.progress-chart-scroll > svg,
+.progress-chart-axis {
+  display: block;
+}
+
+.progress-chart-axis {
+  flex: none;
+  border-left: 1px solid var(--border);
+}
+
+.chart-scroll-controls {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.chart-scroll-controls button:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .progress-heading h3 {

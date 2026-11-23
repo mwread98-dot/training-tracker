@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
 export type CalendarWorkout = {
   id: string;
@@ -283,6 +283,7 @@ function MetricToggle({ value, onChange }: { value: ChartMetric; onChange: (valu
       <button
         type="button"
         className={value === "km" ? "btn btn-primary" : "btn"}
+        aria-pressed={value === "km"}
         onClick={() => onChange("km")}
       >
         Km
@@ -290,6 +291,7 @@ function MetricToggle({ value, onChange }: { value: ChartMetric; onChange: (valu
       <button
         type="button"
         className={value === "time" ? "btn btn-primary" : "btn"}
+        aria-pressed={value === "time"}
         onClick={() => onChange("time")}
       >
         Time
@@ -313,7 +315,9 @@ export default function CalendarGrid({
   const [selectedChartWeekIso, setSelectedChartWeekIso] = useState<string | null>(null);
   const [selectedMobileDate, setSelectedMobileDate] = useState<string | null>(null);
   const chartContainerRef = useRef<HTMLDivElement>(null);
-  const [chartSize, setChartSize] = useState({ width: 720, height: 220 });
+  const chartPosition = useRef<{ maxScroll: number; left: number; weekWidth: number } | null>(null);
+  const [chartSize, setChartSize] = useState({ width: 650, height: 220 });
+  const [chartScrollEdges, setChartScrollEdges] = useState({ earlier: false, later: false });
 
   useEffect(() => {
     const element = chartContainerRef.current;
@@ -409,7 +413,7 @@ export default function CalendarGrid({
     currentWeekStart.getDate()
   );
 
-  function getDayTotals(dateIso: string) {
+  const getDayTotals = useCallback((dateIso: string) => {
     const items = byDate[dateIso] ?? [];
     const anyCompletedOnThisDate = items.some(isWorkoutCompleted);
     let plannedKm = 0;
@@ -450,7 +454,7 @@ export default function CalendarGrid({
     }
 
     return { plannedKm, plannedMin, expectedKm, expectedMin };
-  }
+  }, [byDate, todayIso]);
 
   const weekTotals = useMemo(() => {
     const totals: WeekTotals[] = [];
@@ -497,7 +501,7 @@ export default function CalendarGrid({
     }
 
     return totals;
-  }, [cells, byDate, currentWeekStartIso, todayIso]);
+  }, [cells, byDate, currentWeekStartIso, getDayTotals]);
 
   const monthTotal = useMemo(() => {
     const prefix = `${year}-${String(month + 1).padStart(2, "0")}`;
@@ -512,9 +516,17 @@ export default function CalendarGrid({
   }, [workouts, year, month]);
 
   const chartPoints = useMemo(() => {
+    const currentWeek = parseIso(currentWeekStartIso);
+    const firstRecentWeek = addWeeks(currentWeek, -10);
+    const lastWeek = addWeeks(currentWeek, 4);
+    let firstRunIso = toIso(firstRecentWeek.getFullYear(), firstRecentWeek.getMonth(), firstRecentWeek.getDate());
+    for (const workout of workouts) {
+      if (workout.date < firstRunIso && isRunWorkout(workout)) firstRunIso = workout.date;
+    }
+
     const points: ChartPoint[] = [];
-    for (let offset = -10; offset <= 4; offset++) {
-      const weekStart = addWeeks(currentWeekStart, offset);
+    for (let weekStart = startOfWeek(parseIso(firstRunIso)); weekStart <= lastWeek; weekStart = addWeeks(weekStart, 1)) {
+      const weekStartIso = toIso(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate());
       let plannedKm = 0;
       let plannedMin = 0;
       let actualKm = 0;
@@ -536,30 +548,29 @@ export default function CalendarGrid({
         }
       }
       points.push({
-        weekStartIso: toIso(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate()),
-        label: formatDateLabel(weekStart),
+        weekStartIso,
+        label: `${formatDateLabel(weekStart)} ${weekStart.getFullYear()}`,
         plannedKm,
         plannedMin,
         actualKm,
         actualMin,
         expectedKm,
         expectedMin,
-        isCurrentWeek: offset === 0,
+        isCurrentWeek: weekStartIso === currentWeekStartIso,
       });
     }
     return points;
-  }, [byDate, currentWeekStart, todayIso]);
+  }, [workouts, byDate, currentWeekStartIso, getDayTotals]);
 
   const monthDuration = formatDuration(monthTotal.min);
   
-  const chartVisiblePoints = chartPoints.map((point) => {
+  const chartDisplayedPoints = chartPoints.map((point) => {
     const isFutureWeek = point.weekStartIso > currentWeekStartIso;
-    const isCurrentWeek = point.weekStartIso === currentWeekStartIso;
 
     let key: "planned" | "actual" | "expected";
     if (isFutureWeek) {
       key = "planned";
-    } else if (isCurrentWeek) {
+    } else if (point.isCurrentWeek) {
       key = "expected";
     } else {
       key = "actual";
@@ -569,9 +580,7 @@ export default function CalendarGrid({
     return { ...point, isFutureWeek, value };
   });
 
-  // Ten weeks gives each touch target enough room on a phone, while desktop keeps the wider view.
-  const chartDisplayedPoints = chartWidth < 520 ? chartVisiblePoints.slice(-10) : chartVisiblePoints;
-  const rawChartMaxValue = Math.max(1, ...chartDisplayedPoints.map((point) => point.value));
+  const rawChartMaxValue = chartDisplayedPoints.reduce((max, point) => Math.max(max, point.value), 1);
   const chartScaleStep = 10 ** Math.floor(Math.log10(rawChartMaxValue));
   const chartMaxValue = Math.ceil(rawChartMaxValue / chartScaleStep) * chartScaleStep;
 
@@ -580,18 +589,15 @@ export default function CalendarGrid({
   const chartSvgHeight = Math.max(120, chartHeight);
   const chartTop = 20;
   const chartBottom = 34;
-  const chartLeft = 22;
-  const chartRight = 70;
-  const chartSvgWidth = chartWidth;
-  // Never let the axis margins exceed the box: a negative plot width flips the
-  // x-scale and emits invalid (negative) width attributes on the hit targets.
-  const chartPlotWidth = Math.max(1, chartSvgWidth - chartLeft - chartRight);
+  const chartPadding = 26;
+  const chartWeekWidth = Math.max(36, (chartWidth - 2 * chartPadding) / 14);
+  const chartSvgWidth = Math.max(chartWidth, Math.round(2 * chartPadding + (chartDisplayedPoints.length - 1) * chartWeekWidth));
   const chartPlotHeight = chartSvgHeight - chartTop - chartBottom;
   const chartBaselineY = chartTop + chartPlotHeight;
-  const chartX = (index: number) => chartLeft + (index / Math.max(1, chartDisplayedPoints.length - 1)) * chartPlotWidth;
+  const chartX = (index: number) => chartPadding + index * chartWeekWidth;
   const chartY = (value: number) => chartTop + chartPlotHeight - (value / chartMaxValue) * chartPlotHeight;
   const formatChartValue = (value: number) =>
-    chartMetric === "km" ? `${value.toFixed(1)} km` : formatDuration(value) ?? "—";
+    chartMetric === "km" ? `${value.toFixed(1)} km` : formatDuration(value) ?? "0m";
   const formatAxisValue = (value: number) =>
     chartMetric === "km" ? `${value % 1 === 0 ? value.toFixed(0) : value.toFixed(1)} km` : formatDuration(value) ?? "0m";
   const linePath = (points: { index: number; value: number }[]) =>
@@ -628,6 +634,60 @@ export default function CalendarGrid({
   const selectedWeekMin = selectedChartPoint
     ? metricValue(selectedChartPoint, "time", selectedChartPoint.isCurrentWeek ? "expected" : selectedChartPoint.isFutureWeek ? "planned" : "actual")
     : 0;
+
+  const updateChartScroll = useCallback(() => {
+    const element = chartContainerRef.current;
+    if (!element) return;
+    const { scrollLeft, scrollWidth, clientWidth } = element;
+    const earlier = scrollLeft > 1;
+    const later = scrollLeft < scrollWidth - clientWidth - 1;
+    if (chartPosition.current) chartPosition.current.left = scrollLeft;
+    setChartScrollEdges((edges) => edges.earlier === earlier && edges.later === later ? edges : { earlier, later });
+  }, []);
+
+  useLayoutEffect(() => {
+    const element = chartContainerRef.current;
+    if (!element) return;
+    const previous = chartPosition.current;
+    const weeksFromEnd = previous ? (previous.maxScroll - previous.left) / previous.weekWidth : 0;
+    const maxScroll = element.scrollWidth - element.clientWidth;
+    // Keep the same weeks in view if older data arrives or the viewport resizes.
+    element.scrollLeft = maxScroll - weeksFromEnd * chartWeekWidth;
+    chartPosition.current = { maxScroll, left: element.scrollLeft, weekWidth: chartWeekWidth };
+    updateChartScroll();
+  }, [chartSvgWidth, chartWidth, chartWeekWidth, updateChartScroll]);
+
+  function scrollChart(direction: -1 | 1) {
+    const element = chartContainerRef.current;
+    if (!element) return;
+    const weeks = Math.max(1, Math.floor(element.clientWidth / chartWeekWidth) - 1);
+    element.scrollLeft += direction * weeks * chartWeekWidth;
+  }
+
+  function showCurrentChartWeek() {
+    const element = chartContainerRef.current;
+    if (!element) return;
+    setSelectedChartWeekIso(null);
+    element.scrollLeft = element.scrollWidth - element.clientWidth;
+  }
+
+  function selectChartWeekWithKeyboard(event: ReactKeyboardEvent<HTMLDivElement>) {
+    const element = event.currentTarget;
+    let index = selectedChartPointIndex;
+    if (event.key === "Home") index = 0;
+    else if (event.key === "End") index = chartDisplayedPoints.length - 1;
+    else if (event.key === "ArrowLeft") index = Math.max(0, index - 1);
+    else if (event.key === "ArrowRight") index = Math.min(chartDisplayedPoints.length - 1, index + 1);
+    else return;
+
+    event.preventDefault();
+    setSelectedChartWeekIso(chartDisplayedPoints[index].weekStartIso);
+    const x = chartX(index);
+    if (x < element.scrollLeft + chartPadding) element.scrollLeft = x - chartPadding;
+    else if (x > element.scrollLeft + element.clientWidth - chartPadding) {
+      element.scrollLeft = x - element.clientWidth + chartPadding;
+    }
+  }
 
   return (
     <div>
@@ -905,7 +965,7 @@ export default function CalendarGrid({
             flexWrap: "wrap",
           }}
         >
-          <div className="progress-heading">
+          <div className="progress-heading" aria-live="polite">
             <h3>Weekly progress</h3>
             {selectedChartPoint && (
               <p>Week of {selectedChartPoint.label}</p>
@@ -924,143 +984,163 @@ export default function CalendarGrid({
           </div>
         )}
 
-        <div ref={chartContainerRef} className="progress-chart" aria-label="Weekly progress chart">
-          <svg
-            viewBox={`0 0 ${chartSvgWidth} ${chartSvgHeight}`}
-            role="img"
-            aria-label={`Weekly progress chart showing ${chartMetric === "km" ? "distance" : "time"}: completed for past weeks, projected for the current week, and planned for future weeks`}
-            style={{ display: "block", width: "100%", height: "100%" }}
+        <div className="progress-chart">
+          <div
+            ref={chartContainerRef}
+            className="progress-chart-scroll"
+            role="region"
+            aria-label="Weekly progress history. Use the left and right arrow keys to select a week."
+            tabIndex={0}
+            onScroll={updateChartScroll}
+            onKeyDown={selectChartWeekWithKeyboard}
           >
-            {[0, 0.5, 1].map((tick) => {
-              const tickValue = chartMaxValue * tick;
-              const y = chartBaselineY - chartPlotHeight * tick;
-              return (
-                <g key={tick}>
-                  <line
-                    x1={chartLeft}
-                    x2={chartSvgWidth - chartRight}
-                    y1={y}
-                    y2={y}
-                    stroke="var(--border)"
-                    strokeWidth={1}
-                  />
-                  <text
-                    x={chartSvgWidth - 8}
-                    y={y + 5}
-                    textAnchor="end"
-                    fontSize={13}
-                    fill="var(--text-muted)"
-                  >
-                    {formatAxisValue(tickValue)}
-                  </text>
-                </g>
-              );
-            })}
-
-            {areaPath(actualSeries) && (
-              <path d={areaPath(actualSeries)} fill="rgba(252, 76, 2, 0.2)" />
-            )}
-            {areaPath(plannedSeries) && (
-              <path d={areaPath(plannedSeries)} fill="rgba(252, 76, 2, 0.08)" />
-            )}
-            {linePath(actualSeries) && (
-              <path
-                d={linePath(actualSeries)}
-                fill="none"
-                stroke="#3002fc"
-                strokeWidth={4}
-                strokeLinejoin="round"
-                strokeLinecap="round"
-              />
-            )}
-            {linePath(plannedSeries) && (
-              <path
-                d={linePath(plannedSeries)}
-                fill="none"
-                stroke="#3002fc"
-                strokeWidth={4}
-                strokeLinejoin="round"
-                strokeLinecap="round"
-                strokeDasharray="8 8"
-                opacity={0.9}
-              />
-            )}
-
-            {selectedChartPoint && (
-              <g>
+            <svg
+              width={chartSvgWidth}
+              height={chartSvgHeight}
+              viewBox={`0 0 ${chartSvgWidth} ${chartSvgHeight}`}
+              role="img"
+              aria-label={`Weekly progress chart showing ${chartMetric === "km" ? "distance" : "time"}: completed for past weeks, projected for the current week, and planned for future weeks`}
+            >
+              {[0, 0.5, 1].map((tick) => (
                 <line
-                  x1={chartX(selectedChartPointIndex)}
-                  x2={chartX(selectedChartPointIndex)}
-                  y1={chartTop}
-                  y2={chartBaselineY}
+                  key={tick}
+                  x1={0}
+                  x2={chartSvgWidth}
+                  y1={chartY(chartMaxValue * tick)}
+                  y2={chartY(chartMaxValue * tick)}
+                  stroke="var(--border)"
+                />
+              ))}
+
+              {areaPath(actualSeries) && (
+                <path d={areaPath(actualSeries)} fill="rgba(252, 76, 2, 0.2)" />
+              )}
+              {areaPath(plannedSeries) && (
+                <path d={areaPath(plannedSeries)} fill="rgba(252, 76, 2, 0.08)" />
+              )}
+              {linePath(actualSeries) && (
+                <path
+                  d={linePath(actualSeries)}
+                  fill="none"
                   stroke="#3002fc"
-                  strokeWidth={3}
+                  strokeWidth={4}
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                />
+              )}
+              {linePath(plannedSeries) && (
+                <path
+                  d={linePath(plannedSeries)}
+                  fill="none"
+                  stroke="#3002fc"
+                  strokeWidth={4}
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                  strokeDasharray="8 8"
                   opacity={0.9}
                 />
-                <circle
-                  cx={chartX(selectedChartPointIndex)}
-                  cy={chartY(selectedChartPoint.value)}
-                  r={18}
-                  fill="rgba(252, 76, 2, 0.18)"
-                />
-              </g>
-            )}
+              )}
 
-            {chartDisplayedPoints.map((point, index) => {
-              const valueLabel = formatChartValue(point.value);
-              
-              const modeLabel = point.isCurrentWeek 
-                ? "Projected" 
-                : point.isFutureWeek 
-                  ? "Planned" 
-                  : "Actual";
-
-              const x = chartX(index);
-              const y = chartY(point.value);
-              const previousPoint = chartDisplayedPoints[index - 1];
-              const startsNewMonth = !previousPoint || parseIso(previousPoint.weekStartIso).getMonth() !== parseIso(point.weekStartIso).getMonth();
-              const showLabel = startsNewMonth && point.weekStartIso !== selectedChartPoint?.weekStartIso;
-              return (
-                <g
-                  key={point.weekStartIso}
-                  className="chart-week-hit"
-                  onMouseEnter={() => setSelectedChartWeekIso(point.weekStartIso)}
-                  onClick={() => setSelectedChartWeekIso(point.weekStartIso)}
-                >
-                  <rect
-                    x={index === 0 ? chartLeft : (chartX(index - 1) + x) / 2}
-                    y={chartTop}
-                    width={(index === chartDisplayedPoints.length - 1 ? chartSvgWidth - chartRight : (x + chartX(index + 1)) / 2) - (index === 0 ? chartLeft : (chartX(index - 1) + x) / 2)}
-                    height={chartPlotHeight + chartBottom}
-                    fill="transparent"
+              {selectedChartPoint && (
+                <g>
+                  <line
+                    x1={chartX(selectedChartPointIndex)}
+                    x2={chartX(selectedChartPointIndex)}
+                    y1={chartTop}
+                    y2={chartBaselineY}
+                    stroke="#3002fc"
+                    strokeWidth={3}
+                    opacity={0.9}
                   />
                   <circle
-                    cx={x}
-                    cy={y}
-                    r={point.weekStartIso === selectedChartPoint?.weekStartIso ? 7 : 5}
-                    fill={point.isFutureWeek ? "var(--surface)" : "#fff"}
-                    stroke="#3002fc"
-                    strokeWidth={4}
-                  >
-                    <title>{`${modeLabel}: ${valueLabel} · week starting ${point.label}`}</title>
-                  </circle>
-                  {showLabel && (
-                    <text
-                      x={x}
-                      y={chartSvgHeight - 16}
-                      textAnchor="middle"
-                      fontSize={12}
-                      fontWeight={point.weekStartIso === selectedChartPoint?.weekStartIso ? 700 : 500}
-                      fill={point.weekStartIso === selectedChartPoint?.weekStartIso ? "#3002fc" : "var(--text-muted)"}
-                    >
-                      {point.isCurrentWeek ? "Current" : MONTH_SHORT[parseIso(point.weekStartIso).getMonth()].toUpperCase()}
-                    </text>
-                  )}
+                    cx={chartX(selectedChartPointIndex)}
+                    cy={chartY(selectedChartPoint.value)}
+                    r={18}
+                    fill="rgba(252, 76, 2, 0.18)"
+                  />
                 </g>
-              );
-            })}
+              )}
+
+              {chartDisplayedPoints.map((point, index) => {
+                const valueLabel = formatChartValue(point.value);
+                const modeLabel = point.isCurrentWeek
+                  ? "Projected"
+                  : point.isFutureWeek
+                    ? "Planned"
+                    : "Actual";
+
+                const x = chartX(index);
+                const y = chartY(point.value);
+                const monthKey = point.weekStartIso.slice(0, 7);
+                const startsNewMonth = monthKey !== chartDisplayedPoints[index - 1]?.weekStartIso.slice(0, 7);
+                const month = Number(monthKey.slice(5)) - 1;
+                const label = month === 0 ? `Jan ’${monthKey.slice(2, 4)}` : MONTH_SHORT[month];
+                const hitLeft = Math.max(0, x - chartWeekWidth / 2);
+                const hitRight = Math.min(chartSvgWidth, x + chartWeekWidth / 2);
+                return (
+                  <g
+                    key={point.weekStartIso}
+                    className="chart-week-hit"
+                    onPointerMove={(event) => {
+                      if (event.pointerType === "mouse") setSelectedChartWeekIso(point.weekStartIso);
+                    }}
+                    onClick={() => setSelectedChartWeekIso(point.weekStartIso)}
+                  >
+                    <rect
+                      x={hitLeft}
+                      y={chartTop}
+                      width={hitRight - hitLeft}
+                      height={chartPlotHeight + chartBottom}
+                      fill="transparent"
+                    />
+                    <circle
+                      cx={x}
+                      cy={y}
+                      r={point.weekStartIso === selectedChartPoint?.weekStartIso ? 7 : 5}
+                      fill={point.isFutureWeek ? "var(--surface)" : "#fff"}
+                      stroke="#3002fc"
+                      strokeWidth={4}
+                    >
+                      <title>{`${modeLabel}: ${valueLabel} · week starting ${point.label}`}</title>
+                    </circle>
+                    {(startsNewMonth || point.isCurrentWeek) && (
+                      <text
+                        x={x}
+                        y={chartSvgHeight - 16}
+                        textAnchor="middle"
+                        fontSize={12}
+                        fontWeight={point.weekStartIso === selectedChartPoint?.weekStartIso ? 700 : 500}
+                        fill={point.weekStartIso === selectedChartPoint?.weekStartIso ? "#3002fc" : "var(--text-muted)"}
+                      >
+                        {point.isCurrentWeek ? "Current" : label}
+                      </text>
+                    )}
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
+          <svg className="progress-chart-axis" width="64" height={chartSvgHeight} aria-hidden="true">
+            {[0, 0.5, 1].map((tick) => (
+              <text key={tick} x={58} y={chartY(chartMaxValue * tick) + 5} textAnchor="end" fontSize={13} fill="var(--text-muted)">
+                {formatAxisValue(chartMaxValue * tick)}
+              </text>
+            ))}
           </svg>
         </div>
+        {(chartScrollEdges.earlier || chartScrollEdges.later) && (
+          <div className="chart-scroll-controls">
+            <button type="button" className="btn" disabled={!chartScrollEdges.earlier} onClick={() => scrollChart(-1)}>
+              ← Earlier
+            </button>
+            <button type="button" className="btn btn-text" onClick={showCurrentChartWeek}>
+              This week
+            </button>
+            <button type="button" className="btn" disabled={!chartScrollEdges.later} onClick={() => scrollChart(1)}>
+              Later →
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
