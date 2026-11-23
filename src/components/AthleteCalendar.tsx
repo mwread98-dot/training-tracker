@@ -3,7 +3,7 @@ import { generateClient } from "aws-amplify/data";
 import { fetchAuthSession, fetchUserAttributes } from "aws-amplify/auth";
 import type { Schema } from "../../amplify/data/resource";
 import CalendarGrid, { type CalendarWorkout, type DayAvailability } from "./CalendarGrid";
-import WorkoutDetail from "./WorkoutDetail";
+import WorkoutDetail, { canRescheduleWorkout, type WorkoutChanges } from "./WorkoutDetail";
 import AvailabilityForm from "./AvailabilityForm";
 import GoalRacePanel from "./GoalRacePanel";
 import CalendarSubscribe, { CALENDAR_FEED_ENABLED } from "./CalendarSubscribe";
@@ -286,23 +286,37 @@ export default function AthleteCalendar() {
     await loadAvailability();
   }
 
-  async function handleSave(data: { completed: boolean; athleteNotes: string | null }) {
-    if (!selected || !idToken) return;
-    const { errors } = await client.models.Workout.update(
-      {
-        entryId: selected.entryId,
-        athleteEmail: selected.athleteEmail,
-        date: selected.date,
-        ...data,
-      },
-      { authMode: "userPool", authToken: idToken }
-    );
-    if (errors?.length) {
-      console.error("Failed to update athlete workout", errors);
+  async function handleSave(changes: WorkoutChanges) {
+    if (!selected || !idToken) throw new Error("Couldn't save this session. Please try again.");
+    if (Object.keys(changes).length === 0) {
+      setSelected(null);
       return;
     }
+
+    const current = workouts.find((workout) => workout.entryId === selected.entryId);
+    if (!current) throw new Error("This session is no longer on your calendar.");
+    if (changes.date && !canRescheduleWorkout(current)) {
+      throw new Error("This session has synced with Strava and uses its recorded date. Reopen it to edit your notes.");
+    }
+
+    const { data, errors } = await client.models.Workout.update(
+      { entryId: current.entryId, ...changes },
+      { authMode: "userPool", authToken: idToken }
+    );
+    if (errors?.length || !data) {
+      console.error("Failed to update athlete workout", errors);
+      throw new Error("Couldn't save this session. Please try again.");
+    }
+
+    // Ignore any poll that started before the update finished.
+    ++workoutsRequestId.current;
+    setWorkouts((items) => sortWorkouts([...items.filter((workout) => workout.entryId !== data.entryId), data]));
+    if (changes.date) {
+      const [newYear, newMonth] = data.date.split("-").map(Number);
+      setYear(newYear);
+      setMonth(newMonth - 1);
+    }
     setSelected(null);
-    await loadWorkouts();
   }
 
   const calendarWorkouts: CalendarWorkout[] = useMemo(
