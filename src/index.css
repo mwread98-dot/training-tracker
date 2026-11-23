@@ -298,7 +298,10 @@ input, select, textarea {
   padding: 4px 7px;
   font-weight: 600;
   text-align: left;
-  border: 1px solid transparent;
+  background-color: var(--intensity-fill);
+  border: 1px solid var(--intensity-accent);
+  border-inline-start-width: 3px;
+  color: var(--intensity-ink);
   cursor: pointer;
   overflow: hidden;
   text-decoration: none;
@@ -328,101 +331,80 @@ input, select, textarea {
   font-size: 11px;
   line-height: 1.1;
   font-weight: 700;
-  opacity: 0.85;
 }
 
-/* ── Intensity Theme Definitions (Future Workouts) ── */
-
-/* Easy: Soft Slate Blue */
-.workout-chip.intensity-easy {
-  background-color: #f0f6fc;
-  border-color: #bcd1e6;
-  color: #1e3a5f;
+/* Run intensity colours, from cool blue to deep crimson. */
+.intensity-recovery {
+  --intensity-fill: #e8f3ff;
+  --intensity-accent: #3a7db7;
+  --intensity-ink: #183d61;
 }
 
-/* Marathon Pace: Soft Emerald Mint */
-.workout-chip.intensity-marathon_pace {
-  background-color: #eefdf7;
-  border-color: #bbf2d7;
-  color: #0f5132;
+.intensity-easy {
+  --intensity-fill: #e0f7f4;
+  --intensity-accent: #16867b;
+  --intensity-ink: #134e46;
 }
 
-/* Threshold: Soft Amber Gold */
-.workout-chip.intensity-threshold {
-  background-color: #fef8ec;
-  border-color: #fce1b4;
-  color: #825302;
+.intensity-steady {
+  --intensity-fill: #eaf6e4;
+  --intensity-accent: #568b40;
+  --intensity-ink: #2e5024;
 }
 
-/* VO2 Max: Soft Orchid Pink */
-.workout-chip.intensity-vo2_max {
-  background-color: #fdf2f8;
-  border-color: #fbcfe8;
-  color: #9d174d;
+.intensity-marathon_pace {
+  --intensity-fill: #f0f6d5;
+  --intensity-accent: #798c24;
+  --intensity-ink: #414d17;
 }
 
-/* Speed Work: Soft Coral Red */
-.workout-chip.intensity-speed_work {
-  background-color: #fff5f5;
-  border-color: #febca8;
-  color: #9b1c1c;
+.intensity-half_marathon_pace {
+  --intensity-fill: #fff2c2;
+  --intensity-accent: #ae7c07;
+  --intensity-ink: #5a3c08;
 }
 
-/* ── Completed Workouts (Green Base + Colored Intensity Stripes) ── */
-.workout-chip.completed {
-  background-color: #dcfce7 !important;
-  border-color: #16a34a !important;
-  color: #14532d !important;
-  text-decoration: none;
+.intensity-threshold {
+  --intensity-fill: #ffead2;
+  --intensity-accent: #c36912;
+  --intensity-ink: #692e0e;
 }
 
-.workout-chip.completed.intensity-easy {
+.intensity-vo2_max {
+  --intensity-fill: #ffe4d7;
+  --intensity-accent: #cd4c25;
+  --intensity-ink: #722911;
+}
+
+.intensity-speed_work {
+  --intensity-fill: #ffdee2;
+  --intensity-accent: #ca354b;
+  --intensity-ink: #771c2b;
+}
+
+.intensity-race {
+  --intensity-fill: #f6d6df;
+  --intensity-accent: #9d1743;
+  --intensity-ink: #64112e;
+}
+
+.field .workout-intensity-select {
+  background-color: var(--intensity-fill);
+  border-inline-start: 3px solid var(--intensity-accent);
+  color: var(--intensity-ink);
+}
+
+.workout-intensity-select option {
+  background-color: var(--surface);
+  color: var(--text);
+}
+
+.workout-chip.completed,
+.mobile-workout-indicator.completed {
   background-image: repeating-linear-gradient(
-    45deg,
-    transparent,
-    transparent 8px,
-    rgba(30, 58, 95, 0.09) 8px,
-    rgba(30, 58, 95, 0.09) 16px
-  );
-}
-
-.workout-chip.completed.intensity-marathon_pace {
-  background-image: repeating-linear-gradient(
-    45deg,
-    transparent,
-    transparent 8px,
-    rgba(15, 81, 50, 0.09) 8px,
-    rgba(15, 81, 50, 0.09) 16px
-  );
-}
-
-.workout-chip.completed.intensity-threshold {
-  background-image: repeating-linear-gradient(
-    45deg,
-    transparent,
-    transparent 8px,
-    rgba(130, 83, 2, 0.09) 8px,
-    rgba(130, 83, 2, 0.09) 16px
-  );
-}
-
-.workout-chip.completed.intensity-vo2_max {
-  background-image: repeating-linear-gradient(
-    45deg,
-    transparent,
-    transparent 8px,
-    rgba(157, 23, 77, 0.09) 8px,
-    rgba(157, 23, 77, 0.09) 16px
-  );
-}
-
-.workout-chip.completed.intensity-speed_work {
-  background-image: repeating-linear-gradient(
-    45deg,
-    transparent,
-    transparent 8px,
-    rgba(155, 28, 28, 0.09) 8px,
-    rgba(155, 28, 28, 0.09) 16px
+    135deg,
+    transparent 0 var(--workout-hatch-gap, 6px),
+    var(--workout-hatch-color, rgba(25, 24, 23, 0.17)) var(--workout-hatch-gap, 6px) calc(var(--workout-hatch-gap, 6px) + 2px)
   );
 }
 
@@ -1167,30 +1149,12 @@ input, select, textarea {
   }
 
   .mobile-workout-indicator {
-    background: #bcd1e6;
+    --workout-hatch-gap: 3px;
+    --workout-hatch-color: rgba(255, 255, 255, 0.65);
+    background-color: var(--intensity-accent);
     border-radius: 99px;
     display: block;
     height: 4px;
-  }
-
-  .mobile-workout-indicator.intensity-marathon_pace {
-    background: #48b885;
-  }
-
-  .mobile-workout-indicator.intensity-threshold {
-    background: #e0a100;
-  }
-
-  .mobile-workout-indicator.intensity-vo2_max {
-    background: #d75a9b;
-  }
-
-  .mobile-workout-indicator.intensity-speed_work {
-    background: #dc604d;
-  }
-
-  .mobile-workout-indicator.completed {
-    background: #16a34a;
   }
 
   .mobile-workout-more {
