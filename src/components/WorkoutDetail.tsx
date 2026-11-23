@@ -1,12 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import type { Schema } from "../../amplify/data/resource";
 
 type Workout = Schema["Workout"]["type"];
+export type WorkoutChanges = { date?: string; completed?: boolean; athleteNotes?: string | null };
+
+export function canRescheduleWorkout(workout: Workout) {
+  return workout.source !== "strava" && !workout.stravaActivityId;
+}
 
 type Props = {
   workout: Workout;
   completedActivitiesOnDate?: Workout[];
-  onSave: (data: { completed: boolean; athleteNotes: string | null }) => void;
+  onSave: (changes: WorkoutChanges) => Promise<void>;
   onClose: () => void;
 };
 
@@ -112,6 +117,9 @@ export default function WorkoutDetail({
 }: Props) {
   const [completed, setCompleted] = useState(!!workout.completed);
   const [athleteNotes, setAthleteNotes] = useState(workout.athleteNotes ?? "");
+  const [date, setDate] = useState(workout.date);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const hasPlanned = !!(
     workout.description ||
@@ -124,6 +132,8 @@ export default function WorkoutDetail({
 
   const source = (workout.source as string | null | undefined) ?? (workout.stravaActivityId ? "strava" : "coach");
   const completionManagedByStrava = !!workout.stravaActivityId;
+  const canReschedule = canRescheduleWorkout(workout);
+  const dateChanged = canReschedule && date !== workout.date;
   const hasCompletedActivities = completedActivitiesOnDate.length > 0;
 
   const [activeTab, setActiveTab] = useState<"planned" | "completed">(
@@ -143,30 +153,65 @@ export default function WorkoutDetail({
     return "Planned workout";
   }, [source, hasPlanned]);
 
-  function handleSave() {
-    onSave({
-      completed: completionManagedByStrava ? true : completed,
-      athleteNotes: athleteNotes.trim() || null,
-    });
+  async function handleSave(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (saving) return;
+
+    const changes: WorkoutChanges = {};
+    if (dateChanged) changes.date = date;
+    if (!completionManagedByStrava && completed !== !!workout.completed) changes.completed = completed;
+    if (athleteNotes !== (workout.athleteNotes ?? "")) changes.athleteNotes = athleteNotes.trim() || null;
+
+    setSaveError(null);
+    setSaving(true);
+    try {
+      await onSave(changes);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Couldn't save this session. Please try again.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape" && !saving) onClose();
     };
     document.addEventListener("keydown", closeOnEscape);
     return () => document.removeEventListener("keydown", closeOnEscape);
-  }, [onClose]);
+  }, [onClose, saving]);
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="workout-detail-title" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-backdrop" onClick={saving ? undefined : onClose}>
+      <form
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="workout-detail-title"
+        onClick={(e) => e.stopPropagation()}
+        onSubmit={handleSave}
+      >
         <h3 id="workout-detail-title" style={{ marginBottom: 6 }}>{workout.title}</h3>
         <p style={{ color: "var(--text-muted)", fontSize: 14, marginTop: 0, marginBottom: 16 }}>
           {workout.date}
           {workout.type && ` · ${workout.type.replace("_", " ")}`}
           {workout.intensity && ` · ${workout.intensity.replace("_", " ")}`}
         </p>
+
+        {canReschedule && (
+          <div className="field">
+            <label htmlFor="session-date">Session date</label>
+            <input
+              id="session-date"
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              max="9999-12-31"
+              required
+              disabled={saving}
+            />
+          </div>
+        )}
 
         <div
           style={{
@@ -182,6 +227,7 @@ export default function WorkoutDetail({
             type="button"
             className={activeTab === "planned" ? "btn btn-primary" : "btn"}
             onClick={() => setActiveTab("planned")}
+            disabled={saving}
           >
             Planned
           </button>
@@ -189,7 +235,7 @@ export default function WorkoutDetail({
             type="button"
             className={activeTab === "completed" ? "btn btn-primary" : "btn"}
             onClick={() => setActiveTab("completed")}
-            disabled={!hasCompletedActivities}
+            disabled={!hasCompletedActivities || saving}
           >
             Completed
           </button>
@@ -207,20 +253,9 @@ export default function WorkoutDetail({
                 id="activity-notes"
                 value={athleteNotes}
                 onChange={(e) => setAthleteNotes(e.target.value)}
+                disabled={saving}
                 placeholder="How did it feel? Any weather, terrain, fatigue, or niggles to mention?"
               />
-            </div>
-
-            <div className="modal-actions">
-              <div />
-              <div style={{ display: "flex", gap: 8 }}>
-                <button type="button" className="btn" onClick={onClose}>
-                  Close
-                </button>
-                <button type="button" className="btn btn-primary" onClick={handleSave}>
-                  Save notes
-                </button>
-              </div>
             </div>
           </div>
         ) : (
@@ -251,7 +286,7 @@ export default function WorkoutDetail({
                 type="checkbox"
                 checked={completionManagedByStrava ? true : completed}
                 onChange={(e) => setCompleted(e.target.checked)}
-                disabled={completionManagedByStrava}
+                disabled={completionManagedByStrava || saving}
               />
               {completionManagedByStrava ? "Completed (synced from Strava)" : "Mark as completed"}
             </label>
@@ -259,24 +294,22 @@ export default function WorkoutDetail({
             {!hasCompletedActivities && (
               <div className="field">
                 <label htmlFor="workout-notes">Your notes (how it felt, conditions, etc.)</label>
-                <textarea id="workout-notes" value={athleteNotes} onChange={(e) => setAthleteNotes(e.target.value)} />
+                <textarea id="workout-notes" value={athleteNotes} onChange={(e) => setAthleteNotes(e.target.value)} disabled={saving} />
               </div>
             )}
-
-            <div className="modal-actions">
-              <div />
-              <div style={{ display: "flex", gap: 8 }}>
-                <button type="button" className="btn" onClick={onClose}>
-                  Close
-                </button>
-                <button type="button" className="btn btn-primary" onClick={handleSave}>
-                  Save
-                </button>
-              </div>
-            </div>
           </>
         )}
-      </div>
+
+        {saveError && <p className="connection-error" role="alert">{saveError}</p>}
+        <div className="modal-actions" style={{ justifyContent: "flex-end", gap: 8 }}>
+          <button type="button" className="btn" onClick={onClose} disabled={saving}>
+            Close
+          </button>
+          <button type="submit" className="btn btn-primary" disabled={saving}>
+            {saving ? "Saving…" : dateChanged ? "Move session" : activeTab === "completed" ? "Save notes" : "Save"}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
